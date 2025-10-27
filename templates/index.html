@@ -18,11 +18,11 @@
                 </div>
             </div>
             <nav class="menu">
-                <a href="#" class="menu-item active">Startseite</a>
-                <a href="#" class="menu-item">Filme</a>
-                <a href="#" class="menu-item">Serien</a>
-                <a href="#" class="menu-item">Scraper</a>
-                <a href="#settings" class="menu-item">Einstellungen</a>
+                <a href="#" class="menu-item active" data-target="start">Startseite</a>
+                <a href="#" class="menu-item" data-target="filme">Filme</a>
+                <a href="#" class="menu-item" data-target="serien">Serien</a>
+                <a href="#" class="menu-item" data-target="scraper">Scraper</a>
+                <a href="#" class="menu-item" data-target="settings">Einstellungen</a>
             </nav>
             <div class="sidebar-footer">
                 <button id="syncTmdb" class="btn btn-primary">TMDB aktualisieren</button>
@@ -30,42 +30,169 @@
             </div>
         </aside>
         <main class="content">
-            <header class="hero" id="hero">
-                <div class="hero-content">
-                    <h2>Entdecke deine Mediathek</h2>
-                    <p>Medusa kombiniert die Eleganz von Plex mit der Dynamik von Netflix. Synchronisiere Inhalte von TMDB und erweitere deine Sammlung mit externen Quellen.</p>
-                    <div class="hero-actions">
-                        <button class="btn btn-primary" id="refreshHero">Zufälliger Film</button>
-                        <button class="btn btn-secondary">Wiedergabeliste</button>
+            <section class="panel active" data-section="start">
+                <header class="hero" id="hero">
+                    <div class="hero-content">
+                        <h2>Entdecke deine Mediathek</h2>
+                        <p>Medusa kombiniert die Eleganz von Plex mit der Dynamik von Netflix. Synchronisiere Inhalte von TMDB und erweitere deine Sammlung mit externen Quellen.</p>
+                        <div class="hero-actions">
+                            <button class="btn btn-primary" id="refreshHero">Zufälliger Film</button>
+                            <button class="btn btn-secondary" data-target="filme">Zu den Filmen</button>
+                        </div>
+                    </div>
+                </header>
+                {% for name, movies in categories.items() %}
+                <section class="carousel">
+                    <div class="section-header">
+                        <h3>{{ name }}</h3>
+                        <span class="section-hint">Handverlesene Highlights</span>
+                    </div>
+                    {% if movies %}
+                    <div class="carousel-track">
+                        {% for movie in movies %}
+                        {% set poster_url = movie.poster_path and "https://image.tmdb.org/t/p/w500" + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+                        {% set backdrop_url = movie.backdrop_path and "https://image.tmdb.org/t/p/w780" + movie.backdrop_path or '' %}
+                        <article class="card" role="button" tabindex="0"
+                                 data-movie-id="{{ movie.id }}"
+                                 data-title="{{ movie.title }}"
+                                 data-overview="{{ movie.overview|default('')|e }}"
+                                 data-backdrop="{{ backdrop_url }}"
+                                 data-poster="{{ poster_url }}"
+                                 data-release="{{ movie.release_date or '' }}">
+                            <div class="card-poster" style="background-image: url('{{ poster_url }}');"></div>
+                            <div class="card-overlay">
+                                <h4>{{ movie.title }}</h4>
+                                <p>{{ movie.release_date or 'Unbekannt' }}</p>
+                                <span class="rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="empty">Noch keine Inhalte in dieser Kategorie.</p>
+                    {% endif %}
+                </section>
+                {% endfor %}
+            </section>
+
+            <section class="panel" data-section="filme">
+                <div class="panel-header">
+                    <div>
+                        <h2>Filme</h2>
+                        <p class="panel-subtitle">Alle Filme deiner Bibliothek, übersichtlich strukturiert wie bei Netflix.</p>
                     </div>
                 </div>
-            </header>
-
-            {% for name, movies in categories.items() %}
-            <section class="carousel">
-                <div class="section-header">
-                    <h3>{{ name }}</h3>
-                    <a href="#" class="section-link">Alle anzeigen</a>
-                </div>
-                <div class="carousel-track">
-                    {% for movie in movies %}
-                    <article class="card" data-title="{{ movie.title }}">
-                        <div class="card-poster" style="background-image: url('{{ movie.poster_path and "https://image.tmdb.org/t/p/w500" + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') }}');"></div>
-                        <div class="card-overlay">
-                            <h4>{{ movie.title }}</h4>
-                            <p>{{ movie.release_date or 'Unbekannt' }}</p>
-                            <span class="rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
+                {% if film_sections %}
+                    {% for section in film_sections %}
+                    <section class="carousel">
+                        <div class="section-header">
+                            <h3>{{ section.title }}</h3>
+                            <span class="section-hint">Filmübersicht</span>
                         </div>
-                    </article>
+                        {% if section.items %}
+                        <div class="carousel-track">
+                            {% for movie in section.items %}
+                            {% set poster_url = movie.poster_path and "https://image.tmdb.org/t/p/w500" + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+                            {% set backdrop_url = movie.backdrop_path and "https://image.tmdb.org/t/p/w780" + movie.backdrop_path or '' %}
+                            <article class="card" role="button" tabindex="0"
+                                     data-movie-id="{{ movie.id }}"
+                                     data-title="{{ movie.title }}"
+                                     data-overview="{{ movie.overview|default('')|e }}"
+                                     data-backdrop="{{ backdrop_url }}"
+                                     data-poster="{{ poster_url }}"
+                                     data-release="{{ movie.release_date or '' }}">
+                                <div class="card-poster" style="background-image: url('{{ poster_url }}');"></div>
+                                <div class="card-overlay">
+                                    <h4>{{ movie.title }}</h4>
+                                    <p>{{ movie.release_date or 'Unbekannt' }}</p>
+                                    <span class="rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
+                                </div>
+                            </article>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="empty">In diesem Bereich wurden noch keine Filme gefunden.</p>
+                        {% endif %}
+                    </section>
+                    {% endfor %}
+                {% else %}
+                    <p class="empty large">Noch keine Filme vorhanden. Synchronisiere zuerst Inhalte.</p>
+                {% endif %}
+            </section>
+
+            <section class="panel" data-section="serien">
+                <div class="panel-header">
+                    <div>
+                        <h2>Serien</h2>
+                        <p class="panel-subtitle">Serien werden hier gesammelt, sobald du sie synchronisiert hast.</p>
+                    </div>
+                </div>
+                {% if series_sections %}
+                    {% for section in series_sections %}
+                    <section class="carousel">
+                        <div class="section-header">
+                            <h3>{{ section.title }}</h3>
+                            <span class="section-hint">Serienübersicht</span>
+                        </div>
+                        {% if section.items %}
+                        <div class="carousel-track">
+                            {% for show in section.items %}
+                            {% set poster_url = show.poster_path and "https://image.tmdb.org/t/p/w500" + show.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+                            {% set backdrop_url = show.backdrop_path and "https://image.tmdb.org/t/p/w780" + show.backdrop_path or '' %}
+                            <article class="card" role="button" tabindex="0"
+                                     data-movie-id="{{ show.id }}"
+                                     data-title="{{ show.title }}"
+                                     data-overview="{{ show.overview|default('')|e }}"
+                                     data-backdrop="{{ backdrop_url }}"
+                                     data-poster="{{ poster_url }}"
+                                     data-release="{{ show.release_date or '' }}">
+                                <div class="card-poster" style="background-image: url('{{ poster_url }}');"></div>
+                                <div class="card-overlay">
+                                    <h4>{{ show.title }}</h4>
+                                    <p>{{ show.release_date or 'Unbekannt' }}</p>
+                                    <span class="rating">⭐ {{ (show.rating or 0)|round(1) }}</span>
+                                </div>
+                            </article>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="empty">Diese Kategorie enthält noch keine Serien.</p>
+                        {% endif %}
+                    </section>
+                    {% endfor %}
+                {% else %}
+                    <p class="empty large">Noch keine Serien synchronisiert.</p>
+                {% endif %}
+            </section>
+
+            <section class="panel" data-section="scraper">
+                <div class="panel-header">
+                    <div>
+                        <h2>Scraper</h2>
+                        <p class="panel-subtitle">Verwalte Links, die über die Scraper gesammelt wurden.</p>
+                    </div>
+                </div>
+                <div class="scraper-grid">
+                    {% for link in scraped %}
+                    <div class="scraper-card" data-movie-id="{{ link.movie.id }}" role="button" tabindex="0">
+                        <div>
+                            <h4>{{ link.movie.title }}</h4>
+                            <p>{{ link.source_name }} · {{ link.mirror_info or 'Mirror' }}</p>
+                        </div>
+                        <button type="button" class="btn btn-ghost view-detail" data-movie-id="{{ link.movie.id }}">Details anzeigen</button>
+                    </div>
+                    {% else %}
+                    <p class="empty large">Noch keine gescrapten Links vorhanden.</p>
                     {% endfor %}
                 </div>
             </section>
-            {% endfor %}
 
-            <section class="settings-panel" id="settings">
-                <div class="section-header">
-                    <h3>Einstellungen</h3>
-                    <span class="pill">Verwaltung</span>
+            <section class="panel" data-section="settings" id="settings">
+                <div class="panel-header">
+                    <div>
+                        <h2>Einstellungen</h2>
+                        <p class="panel-subtitle">Verwalte Schlüssel und Scraper-Einstellungen.</p>
+                    </div>
                 </div>
                 <form id="settingsForm" class="settings-form">
                     <div class="form-grid">
@@ -89,29 +216,45 @@
                         <button type="submit" class="btn btn-primary">Einstellungen speichern</button>
                     </div>
                 </form>
-            </section>
-
-            <section class="scraper-panel">
-                <div class="section-header">
-                    <h3>Scraper Links</h3>
-                    <span class="pill">Kinox.farm</span>
-                </div>
-                <div class="scraper-grid">
-                    {% for link in scraped %}
-                    <div class="scraper-card">
-                        <div>
-                            <h4>{{ link.movie.title }}</h4>
-                            <p>{{ link.source_name }} · {{ link.mirror_info or 'Mirror' }}</p>
-                        </div>
-                        <a class="btn btn-ghost" href="{{ link.url }}" target="_blank" rel="noopener">Stream öffnen</a>
+                <div class="settings-reset">
+                    <div>
+                        <h3>Scraper zurücksetzen</h3>
+                        <p class="panel-subtitle">Lösche alle gescrapten Inhalte und beginne erneut.</p>
                     </div>
-                    {% else %}
-                    <p class="empty">Noch keine gescrapten Links vorhanden.</p>
-                    {% endfor %}
+                    <button type="button" id="resetScraped" class="btn btn-secondary">Gescrapte Inhalte löschen</button>
                 </div>
             </section>
         </main>
     </div>
+
+    <div class="detail-overlay" id="detailOverlay" hidden>
+        <div class="detail-dialog">
+            <button class="detail-close" type="button" aria-label="Schließen">&times;</button>
+            <div class="detail-hero" id="detailHero">
+                <div class="detail-hero-backdrop" id="detailBackdrop"></div>
+                <div class="detail-hero-content">
+                    <img id="detailPoster" alt="Poster" data-placeholder="{{ url_for('static', filename='images/poster-placeholder.svg') }}" />
+                    <div class="detail-text">
+                        <h2 id="detailTitle"></h2>
+                        <p id="detailTagline" class="detail-tagline"></p>
+                        <div class="detail-meta" id="detailMeta"></div>
+                        <p id="detailOverview"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="detail-body">
+                <div class="detail-section">
+                    <h3>Besetzung</h3>
+                    <ul id="detailCast" class="detail-cast"></ul>
+                </div>
+                <div class="detail-section">
+                    <h3>Streams</h3>
+                    <div id="detailStreaming" class="detail-streaming"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="toast" id="toast"></div>
     <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
 </body>

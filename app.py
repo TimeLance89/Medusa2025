@@ -8,7 +8,6 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 from sqlalchemy.engine import make_url
 
-from scrapers.kinox import scrape_detail as scrape_kinox_detail
 from scrapers.kinox import scrape_page as scrape_kinox_page
 
 
@@ -152,6 +151,42 @@ def fetch_tmdb_movies(category: str = "popular", page: int = 1) -> List[dict]:
     return payload.get("results", [])
 
 
+def fetch_tmdb_details(tmdb_id: int) -> dict:
+    """Fetch detailed information for a movie from TMDB."""
+    api_key = get_tmdb_api_key()
+    if not api_key or tmdb_id <= 0:
+        return {}
+
+    api_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}"
+    params = {
+        "api_key": api_key,
+        "language": "de-DE",
+        "append_to_response": "credits",
+    }
+    try:
+        response = requests.get(api_url, params=params, timeout=20)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        app.logger.warning("TMDB detail request failed for %s: %s", tmdb_id, exc)
+        return {}
+
+    payload = response.json()
+    cast_entries = payload.get("credits", {}).get("cast", [])
+    cast_names = [member.get("name") for member in cast_entries if member.get("name")]
+    return {
+        "runtime": payload.get("runtime"),
+        "genres": [genre.get("name") for genre in payload.get("genres", []) if genre.get("name")],
+        "tagline": payload.get("tagline"),
+        "cast": cast_names[:10],
+    }
+
+
+def build_tmdb_image(path: Optional[str], size: str = "w500") -> Optional[str]:
+    if not path:
+        return None
+    return f"https://image.tmdb.org/t/p/{size}{path}"
+
+
 def upsert_movies(tmdb_movies: List[dict]) -> List[Movie]:
     """Store TMDB movies in the database, avoiding duplicates."""
     stored_movies: List[Movie] = []
@@ -203,18 +238,70 @@ def attach_streaming_link(movie_title: str, streaming_url: str, mirror_info: Opt
 
 @app.route("/")
 def index():
+    popular_movies = Movie.query.order_by(Movie.rating.desc().nullslast()).limit(20).all()
+    recent_movies = Movie.query.order_by(Movie.created_at.desc()).limit(20).all()
+    linked_movies = (
+        Movie.query.join(StreamingLink)
+        .order_by(Movie.title.asc())
+        .distinct()
+        .limit(20)
+        .all()
+    )
+
     categories = {
-        "Beliebt": Movie.query.order_by(Movie.rating.desc().nullslast()).limit(20).all(),
-        "Neu hinzugefügt": Movie.query.order_by(Movie.created_at.desc()).limit(20).all(),
+        "Beliebt": popular_movies,
+        "Neu hinzugefügt": recent_movies,
     }
+
+    film_sections = [
+        {"title": "Top bewertet", "items": popular_movies},
+        {"title": "Neu hinzugefügt", "items": recent_movies},
+    ]
+    if linked_movies:
+        film_sections.append({"title": "Mit Streaming Links", "items": linked_movies})
+
+    series_sections: List[dict] = []
+
     scraped = StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
-    return render_template("index.html", categories=categories, scraped=scraped)
+    return render_template(
+        "index.html",
+        categories=categories,
+        film_sections=film_sections,
+        series_sections=series_sections,
+        scraped=scraped,
+    )
 
 
 @app.route("/api/movies")
 def api_movies():
     movies = Movie.query.order_by(Movie.rating.desc().nullslast()).all()
     return jsonify([movie.to_dict() for movie in movies])
+
+
+@app.route("/api/movies/<int:movie_id>")
+def api_movie_detail(movie_id: int):
+    movie = Movie.query.get_or_404(movie_id)
+    tmdb_details = fetch_tmdb_details(movie.tmdb_id)
+
+    poster_url = build_tmdb_image(movie.poster_path)
+    backdrop_url = build_tmdb_image(movie.backdrop_path, "w1280")
+
+    movie_payload = {
+        "id": movie.id,
+        "title": movie.title,
+        "overview": movie.overview,
+        "poster_url": poster_url,
+        "backdrop_url": backdrop_url,
+        "release_date": movie.release_date,
+        "rating": movie.rating,
+        "runtime": tmdb_details.get("runtime"),
+        "genres": tmdb_details.get("genres", []),
+        "tagline": tmdb_details.get("tagline"),
+        "cast": tmdb_details.get("cast", []),
+        "streaming_links": [link.to_dict() for link in movie.streaming_links],
+    }
+
+    return jsonify({"success": True, "movie": movie_payload})
 
 
 @app.route("/api/scrape/kinox", methods=["POST"])
@@ -239,6 +326,17 @@ def api_scrape_kinox():
             link = attach_streaming_link(entry["title"], entry["streaming_url"], entry.get("mirror"))
             collected.append(link.to_dict())
     return jsonify({"success": True, "links": collected})
+
+
+@app.route("/api/reset/scraped", methods=["POST"])
+def api_reset_scraped():
+    removed_links = StreamingLink.query.delete(synchronize_session=False)
+    placeholder_movies = Movie.query.filter(Movie.tmdb_id < 0).all()
+    removed_movies = len(placeholder_movies)
+    for movie in placeholder_movies:
+        db.session.delete(movie)
+    db.session.commit()
+    return jsonify({"success": True, "removed_links": removed_links, "removed_movies": removed_movies})
 
 
 @app.route("/api/tmdb/<category>")
