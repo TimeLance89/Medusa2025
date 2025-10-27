@@ -1,16 +1,20 @@
 const toast = document.getElementById('toast');
-const detailOverlay = document.getElementById('detailOverlay');
+const detailPanel = document.querySelector('[data-section="detail"]');
 const detailBackdrop = document.getElementById('detailBackdrop');
 const detailPoster = document.getElementById('detailPoster');
 const detailTitle = document.getElementById('detailTitle');
 const detailTagline = document.getElementById('detailTagline');
 const detailMeta = document.getElementById('detailMeta');
 const detailOverview = document.getElementById('detailOverview');
+const detailOverviewSecondary = document.getElementById('detailOverviewSecondary');
 const detailCast = document.getElementById('detailCast');
 const detailStreaming = document.getElementById('detailStreaming');
-const detailCloseButton = detailOverlay?.querySelector('.detail-close');
+const detailTrailer = document.getElementById('detailTrailer');
+const detailBackButton = detailPanel?.querySelector('.detail-back');
 
 let changeSection = () => {};
+let currentSectionName = 'start';
+let previousSectionName = 'start';
 let currentSettings = {
   tmdb_api_key: '',
   kinox_start_page: 1,
@@ -112,6 +116,7 @@ function initNavigation() {
       item.classList.toggle('active', item.dataset.target === name);
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    currentSectionName = name;
   }
 
   changeSection = setSection;
@@ -263,10 +268,7 @@ function bindContentCards() {
   });
 }
 
-function closeDetail() {
-  if (!detailOverlay) return;
-  detailOverlay.hidden = true;
-  document.body.classList.remove('modal-open');
+function resetDetailView() {
   if (detailBackdrop) {
     detailBackdrop.style.backgroundImage = 'none';
   }
@@ -280,6 +282,9 @@ function closeDetail() {
   if (detailOverview) {
     detailOverview.textContent = '';
   }
+  if (detailOverviewSecondary) {
+    detailOverviewSecondary.textContent = '';
+  }
   if (detailMeta) {
     detailMeta.innerHTML = '';
   }
@@ -289,37 +294,63 @@ function closeDetail() {
   if (detailStreaming) {
     detailStreaming.innerHTML = '';
   }
+  if (detailTrailer) {
+    detailTrailer.innerHTML = '';
+  }
   if (detailTagline) {
     detailTagline.textContent = '';
+    detailTagline.style.display = 'none';
+  }
+}
+
+function closeDetail() {
+  if (!detailPanel) return;
+  resetDetailView();
+  changeSection(previousSectionName || 'start');
+  previousSectionName = currentSectionName;
+}
+
+function showDetailLoadingState() {
+  resetDetailView();
+  if (detailTitle) {
+    detailTitle.textContent = 'Lädt…';
+  }
+  if (detailOverview) {
+    detailOverview.textContent = 'Details werden geladen…';
+  }
+  if (detailTrailer) {
+    const loadingMessage = document.createElement('p');
+    loadingMessage.classList.add('empty');
+    loadingMessage.textContent = 'Trailer wird geladen…';
+    detailTrailer.appendChild(loadingMessage);
   }
 }
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !detailOverlay?.hidden) {
+  if (event.key === 'Escape' && currentSectionName === 'detail') {
     closeDetail();
   }
 });
 
-detailOverlay?.addEventListener('click', (event) => {
-  if (event.target === detailOverlay) {
-    closeDetail();
-  }
-});
-
-detailCloseButton?.addEventListener('click', closeDetail);
+detailBackButton?.addEventListener('click', closeDetail);
 
 async function openMovieDetail(movieId) {
   try {
+    if (currentSectionName !== 'detail') {
+      previousSectionName = currentSectionName;
+    }
+    showDetailLoadingState();
+    changeSection('detail');
     const { success, movie } = await callApi(`/api/movies/${movieId}`);
     if (!success) return;
     populateDetail(movie);
   } catch (_) {
-    // Fehler bereits über Toast angezeigt
+    closeDetail();
   }
 }
 
 function populateDetail(movie) {
-  if (!detailOverlay || !detailPoster || !detailBackdrop || !detailTitle || !detailMeta || !detailCast || !detailStreaming || !detailOverview || !detailTagline) {
+  if (!detailPanel || !detailPoster || !detailBackdrop || !detailTitle || !detailMeta || !detailCast || !detailStreaming || !detailOverview || !detailTagline) {
     return;
   }
 
@@ -328,7 +359,7 @@ function populateDetail(movie) {
   const backdropUrl = movie.backdrop_url || posterUrl;
 
   detailPoster.src = posterUrl;
-  detailPoster.alt = movie.title || 'Poster';
+  detailPoster.alt = movie.title || 'Unbekannter Titel';
   detailBackdrop.style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
   detailTitle.textContent = movie.title || 'Unbekannter Titel';
 
@@ -340,7 +371,12 @@ function populateDetail(movie) {
     detailTagline.style.display = 'none';
   }
 
-  detailOverview.textContent = movie.overview || 'Keine Beschreibung verfügbar.';
+  const overviewText = movie.overview || 'Keine Beschreibung verfügbar.';
+  const overviewShort = overviewText.length > 220 ? `${overviewText.slice(0, 217)}…` : overviewText;
+  detailOverview.textContent = overviewShort;
+  if (detailOverviewSecondary) {
+    detailOverviewSecondary.textContent = overviewText;
+  }
 
   detailMeta.innerHTML = '';
   const metaEntries = [];
@@ -420,8 +456,25 @@ function populateDetail(movie) {
     detailStreaming.appendChild(empty);
   }
 
-  detailOverlay.hidden = false;
-  document.body.classList.add('modal-open');
+  if (detailTrailer) {
+    detailTrailer.innerHTML = '';
+    const trailer = movie.trailer;
+    if (trailer?.site === 'YouTube' && trailer?.key) {
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://www.youtube.com/embed/${trailer.key}?rel=0`;
+      iframe.allowFullscreen = true;
+      iframe.loading = 'lazy';
+      iframe.referrerPolicy = 'no-referrer';
+      iframe.title = `${movie.title || 'Trailer'} – ${trailer.name || 'YouTube'}`;
+      iframe.setAttribute('allow', 'fullscreen; picture-in-picture; encrypted-media');
+      detailTrailer.appendChild(iframe);
+    } else {
+      const emptyTrailer = document.createElement('p');
+      emptyTrailer.classList.add('empty');
+      emptyTrailer.textContent = 'Kein Trailer verfügbar.';
+      detailTrailer.appendChild(emptyTrailer);
+    }
+  }
 }
 
 bindButtons();

@@ -227,33 +227,46 @@
         </main>
     </div>
 
-    <div class="detail-overlay" id="detailOverlay" hidden>
-        <div class="detail-dialog">
-            <button class="detail-close" type="button" aria-label="Schließen">&times;</button>
-            <div class="detail-hero" id="detailHero">
-                <div class="detail-hero-backdrop" id="detailBackdrop"></div>
-                <div class="detail-hero-content">
-                    <img id="detailPoster" alt="Poster" data-placeholder="{{ url_for('static', filename='images/poster-placeholder.svg') }}" />
-                    <div class="detail-text">
-                        <h2 id="detailTitle"></h2>
-                        <p id="detailTagline" class="detail-tagline"></p>
-                        <div class="detail-meta" id="detailMeta"></div>
-                        <p id="detailOverview"></p>
-                    </div>
+    <section class="panel detail-panel" data-section="detail">
+        <div class="detail-back-bar">
+            <button class="detail-back" type="button" aria-label="Zurück">&larr; Zur Übersicht</button>
+        </div>
+        <div class="detail-hero" id="detailHero">
+            <div class="detail-hero-backdrop" id="detailBackdrop"></div>
+            <div class="detail-hero-overlay"></div>
+            <div class="detail-hero-content">
+                <img id="detailPoster" alt="Poster" data-placeholder="{{ url_for('static', filename='images/poster-placeholder.svg') }}" />
+                <div class="detail-text">
+                    <h2 id="detailTitle"></h2>
+                    <p id="detailTagline" class="detail-tagline"></p>
+                    <div class="detail-meta" id="detailMeta"></div>
+                    <p id="detailOverview"></p>
                 </div>
             </div>
-            <div class="detail-body">
+        </div>
+        <div class="detail-body">
+            <div class="detail-body-main">
+                <div class="detail-section">
+                    <h3>Überblick</h3>
+                    <p id="detailOverviewSecondary"></p>
+                </div>
+                <div class="detail-section">
+                    <h3>Trailer</h3>
+                    <div id="detailTrailer" class="detail-trailer"></div>
+                </div>
                 <div class="detail-section">
                     <h3>Besetzung</h3>
                     <ul id="detailCast" class="detail-cast"></ul>
                 </div>
+            </div>
+            <aside class="detail-body-side">
                 <div class="detail-section">
                     <h3>Streams</h3>
                     <div id="detailStreaming" class="detail-streaming"></div>
                 </div>
-            </div>
+            </aside>
         </div>
-    </div>
+    </section>
 
     <div class="toast" id="toast"></div>
     <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
