@@ -262,6 +262,70 @@ body {
     gap: 1.5rem;
 }
 
+.settings-panel {
+    background: var(--bg-elevated);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    border: 1px solid var(--border);
+    display: grid;
+    gap: 1.5rem;
+}
+
+.settings-form {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.form-grid {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.form-field {
+    display: grid;
+    gap: 0.6rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: var(--radius-md);
+    padding: 1.2rem;
+    border: 1px solid transparent;
+    transition: border 0.2s ease;
+}
+
+.form-field:focus-within {
+    border-color: var(--primary-accent);
+}
+
+.form-label {
+    font-weight: 600;
+}
+
+.form-hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.settings-form input[type="text"],
+.settings-form input[type="number"] {
+    background: rgba(10, 14, 24, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 0.9rem;
+    color: var(--text);
+    font-family: inherit;
+}
+
+.settings-form input[type="text"]:focus,
+.settings-form input[type="number"]:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
 .scraper-grid {
     display: grid;
     gap: 1rem;
