@@ -5,12 +5,15 @@ from typing import List, Optional
 import requests
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.engine import make_url
 
 from scrapers.kinox import scrape_detail as scrape_kinox_detail
 from scrapers.kinox import scrape_page as scrape_kinox_page
 
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///database/mediahub.db")
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DEFAULT_DB_PATH = os.path.join(BASE_DIR, "database", "mediahub.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 
 app = Flask(__name__)
@@ -78,6 +81,15 @@ class StreamingLink(db.Model):
 def ensure_database() -> None:
     """Create the database schema when the app starts."""
     with app.app_context():
+        db_uri = app.config["SQLALCHEMY_DATABASE_URI"]
+        url = make_url(db_uri)
+        if url.drivername == "sqlite" and url.database:
+            db_path = url.database
+            # SQLAlchemy returns relative paths as given, so resolve them to ensure
+            # the parent directory exists before connecting to SQLite.
+            if not os.path.isabs(db_path):
+                db_path = os.path.join(BASE_DIR, db_path)
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
         db.create_all()
 
 
