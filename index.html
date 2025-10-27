@@ -3,445 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Archiv der Dunkelheit - Kriminologie Blog</title>
+    <title>Medusa Media Server</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="logo">
-                <h1>Archiv der Dunkelheit</h1>
-                <span class="logo-subtitle">Kriminologie Blog</span>
-            </div>
-            <ul class="nav-menu">
-                <li><a href="#home" class="nav-link active">Blog</a></li>
-                <li><a href="#about" class="nav-link">Über uns</a></li>
-                <li><a href="#archive" class="nav-link">Archiv</a></li>
-                <li><a href="#admin" class="nav-link admin-link">Admin</a></li>
-            </ul>
-        </div>
-    </nav>
-
-    <!-- Home Section (Blog) -->
-    <section id="home" class="section active">
-        <div class="blog-container">
-            <!-- Hero Post -->
-            <div class="hero-post" id="heroPost">
-                <!-- Hero post will be dynamically inserted -->
-            </div>
-
-            <div class="blog-layout">
-                <!-- Main Content -->
-                <main class="blog-main">
-                    <div class="blog-header">
-                        <h2>Neueste Artikel</h2>
-                        <div class="blog-filters">
-                            <select id="categoryFilter">
-                                <option value="">Alle Kategorien</option>
-                            </select>
-                            <input type="text" id="blogSearch" placeholder="Artikel durchsuchen...">
-                        </div>
-                    </div>
-
-                    <div class="blog-posts" id="blogPosts">
-                        <!-- Blog posts will be dynamically inserted -->
-                    </div>
-
-                    <div class="pagination" id="pagination">
-                        <!-- Pagination will be dynamically inserted -->
-                    </div>
-                </main>
-
-                <!-- Sidebar -->
-                <aside class="blog-sidebar">
-                    <div class="sidebar-widget">
-                        <h3>Über diesen Blog</h3>
-                        <p>Willkommen im Archiv der Dunkelheit - einem forensischen Blog, der sich mit den dunkelsten Kapiteln der Kriminalgeschichte auseinandersetzt.</p>
-                    </div>
-
-                    <div class="sidebar-widget">
-                        <h3>Kategorien</h3>
-                        <ul class="category-list" id="sidebarCategories">
-                            <!-- Categories will be dynamically inserted -->
-                        </ul>
-                    </div>
-
-                    <div class="sidebar-widget">
-                        <h3>Tags</h3>
-                        <div class="tag-cloud" id="tagCloud">
-                            <!-- Tags will be dynamically inserted -->
-                        </div>
-                    </div>
-
-                    <div class="sidebar-widget">
-                        <h3>Archiv</h3>
-                        <ul class="archive-list" id="archiveList">
-                            <!-- Archive will be dynamically inserted -->
-                        </ul>
-                    </div>
-
-                    <div class="sidebar-widget">
-                        <h3>Statistiken</h3>
-                        <div class="sidebar-stats">
-                            <div class="stat-item">
-                                <span class="stat-value" id="totalPosts">0</span>
-                                <span class="stat-label">Artikel</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-value" id="totalCategories">0</span>
-                                <span class="stat-label">Kategorien</span>
-                            </div>
-                        </div>
-                    </div>
-                </aside>
-            </div>
-        </div>
-    </section>
-
-    <!-- Single Post View -->
-    <section id="singlePost" class="section">
-        <div class="single-post-container">
-            <div class="single-post-content" id="singlePostContent">
-                <!-- Single post content will be dynamically inserted -->
-            </div>
-            <aside class="blog-sidebar">
-                <div class="sidebar-widget">
-                    <h3>Ähnliche Artikel</h3>
-                    <div id="relatedPosts">
-                        <!-- Related posts will be dynamically inserted -->
-                    </div>
-                </div>
-            </aside>
-        </div>
-    </section>
-
-    <!-- About Section -->
-    <section id="about" class="section">
-        <div class="container">
-            <div class="about-content">
-                <h2 class="section-title">Über das Archiv der Dunkelheit</h2>
-                <div class="about-text">
-                    <p>Das Archiv der Dunkelheit ist ein forensischer Blog, der sich der wissenschaftlichen Dokumentation und Analyse historischer Kriminalfälle widmet. Unser Ziel ist es, durch fundierte Recherche und objektive Darstellung zum Verständnis kriminellen Verhaltens beizutragen.</p>
-                    
-                    <h3>Unsere Mission</h3>
-                    <p>Wir dokumentieren die dunkelsten Kapitel der Kriminalgeschichte nicht aus Sensationslust, sondern aus wissenschaftlichem Interesse. Jeder Artikel wird sorgfältig recherchiert und dient der forensischen Forschung sowie der Aufklärung über kriminologische Zusammenhänge.</p>
-                    
-                    <h3>Forensischer Ansatz</h3>
-                    <p>Unsere Artikel folgen einem wissenschaftlichen Ansatz und beleuchten:</p>
-                    <ul>
-                        <li>Verhaltensanalyse und psychologische Profile</li>
-                        <li>Modus Operandi und Tatmuster</li>
-                        <li>Ermittlungsmethoden und forensische Techniken</li>
-                        <li>Gesellschaftliche und historische Kontexte</li>
-                    </ul>
+    <div class="app-shell">
+        <header class="main-header">
+            <div class="logo-stack">
+                <span class="logo-icon">🜁</span>
+                <div class="logo-text">
+                    <span class="brand">Medusa</span>
+                    <span class="subtitle">Media Server</span>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <!-- Archive Section -->
-    <section id="archive" class="section">
-        <div class="container">
-            <h2 class="section-title">Archiv</h2>
-            <div class="archive-grid" id="archiveGrid">
-                <!-- Archive will be dynamically inserted -->
+            <nav class="main-nav">
+                <a href="#" class="nav-link active">Bibliothek</a>
+                <a href="#" class="nav-link">Serien</a>
+                <a href="#" class="nav-link">Filme</a>
+                <a href="#" class="nav-link">Scraper</a>
+            </nav>
+            <div class="header-actions">
+                <div class="search-box">
+                    <input type="search" id="movieSearch" placeholder="Suche nach Titeln...">
+                    <span class="material-symbol">search</span>
+                </div>
+                <button class="profile-button" id="openControlPanel">⚙️</button>
             </div>
-        </div>
-    </section>
+        </header>
 
-    <!-- Admin Section -->
-    <section id="admin" class="section">
-        <div class="container">
-            <div id="adminLogin" class="admin-login">
-                <h2 class="section-title">Admin-Bereich</h2>
-                <div class="login-form">
-                    <input type="password" id="adminPassword" placeholder="Passwort eingeben">
-                    <button id="loginBtn" class="btn btn-primary">Anmelden</button>
-                    <p class="login-hint">Standard-Passwort: admin123</p>
+        <main class="content">
+            <section class="hero" id="hero">
+                <div class="hero-overlay"></div>
+                <div class="hero-content">
+                    <p class="hero-label">Jetzt ansehen</p>
+                    <h1 class="hero-title" id="heroTitle">Deine Mediensammlung</h1>
+                    <p class="hero-description" id="heroDescription">
+                        Synchronisiere Filme von TMDB, sammle Mirror-Links aus dem Netz und erlebe deine persönliche Plex-ähnliche Oberfläche direkt im Browser.
+                    </p>
+                    <div class="hero-actions">
+                        <button class="btn btn-primary" id="playHero">▶ Abspielen</button>
+                        <button class="btn btn-secondary" id="moreInfoHero">ℹ Mehr Infos</button>
+                    </div>
                 </div>
+            </section>
+
+            <section class="shelf" id="libraryShelf">
+                <div class="shelf-header">
+                    <h2>Medienbibliothek</h2>
+                    <div class="shelf-actions">
+                        <span class="badge" id="libraryCount">0 Titel</span>
+                    </div>
+                </div>
+                <div class="carousel" id="libraryCarousel"></div>
+            </section>
+
+            <section class="shelf" id="scraperShelf">
+                <div class="shelf-header">
+                    <h2>Gescrapte Mirror-Links</h2>
+                    <div class="shelf-actions">
+                        <span class="badge" id="scrapeCount">0 Links</span>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="scrape-table">
+                        <thead>
+                            <tr>
+                                <th>Titel</th>
+                                <th>Provider</th>
+                                <th>Mirror</th>
+                                <th>Embed-URL</th>
+                                <th>Quelle</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scrapeTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <aside class="control-panel" id="controlPanel">
+            <div class="panel-header">
+                <h3>Steuerzentrale</h3>
+                <button class="close-panel" id="closeControlPanel">×</button>
             </div>
 
-            <div id="adminPanel" class="admin-panel" style="display: none;">
-                <!-- Admin Header -->
-                <div class="admin-header">
-                    <h2>Admin Dashboard</h2>
-                    <button id="logoutBtn" class="btn btn-secondary">Abmelden</button>
+            <section class="panel-section">
+                <h4>TMDB Import</h4>
+                <p>Füge deiner Bibliothek einen neuen Film hinzu. Die Daten werden direkt in der lokalen Datenbank gespeichert.</p>
+                <form id="tmdbForm" class="panel-form">
+                    <label for="tmdbQuery">Titel oder TMDB-ID</label>
+                    <input type="text" id="tmdbQuery" name="tmdbQuery" required placeholder="z.B. Dune">
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Film importieren</button>
+                    </div>
+                </form>
+                <div class="hint">
+                    <strong>Hinweis:</strong> Setze die Umgebungsvariable <code>TMDB_API_KEY</code>, damit der Server auf die TMDB-API zugreifen kann.
                 </div>
+            </section>
 
-                <!-- Admin Navigation -->
-                <div class="admin-nav">
-                    <button class="admin-nav-btn active" data-section="dashboard">Dashboard</button>
-                    <button class="admin-nav-btn" data-section="posts">Artikel</button>
-                    <button class="admin-nav-btn" data-section="categories">Kategorien</button>
-                    <button class="admin-nav-btn" data-section="tags">Tags</button>
-                    <button class="admin-nav-btn" data-section="media">Medien</button>
-                    <button class="admin-nav-btn" data-section="settings">Einstellungen</button>
+            <section class="panel-section">
+                <h4>Scraper</h4>
+                <p>Durchsuche externe Seiten nach Mirror-Links und speichere sie in der Datenbank.</p>
+                <form id="scraperForm" class="panel-form">
+                    <label for="scraperBaseUrl">Basis-URL mit {page}</label>
+                    <input type="url" id="scraperBaseUrl" name="scraperBaseUrl" value="https://kinox.farm/kinofilme-online/page/{page}/" required>
+                    <div class="grid-2">
+                        <div>
+                            <label for="scraperStart">Startseite</label>
+                            <input type="number" id="scraperStart" name="scraperStart" value="1" min="1">
+                        </div>
+                        <div>
+                            <label for="scraperEnd">Endseite</label>
+                            <input type="number" id="scraperEnd" name="scraperEnd" value="1" min="1">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-secondary">Scraping starten</button>
+                    </div>
+                </form>
+                <div class="hint">
+                    <strong>Tipp:</strong> Jede Seite enthält 25 Einträge. Passe den Bereich an, um mehrere Seiten zu scannen.
                 </div>
+            </section>
 
-                <!-- Dashboard Section -->
-                <div class="admin-section active" id="adminDashboard">
-                    <h3>Übersicht</h3>
-                    <div class="dashboard-stats">
-                        <div class="dashboard-card">
-                            <div class="dashboard-icon">📝</div>
-                            <div class="dashboard-info">
-                                <span class="dashboard-number" id="dashTotalPosts">0</span>
-                                <span class="dashboard-label">Artikel gesamt</span>
-                            </div>
-                        </div>
-                        <div class="dashboard-card">
-                            <div class="dashboard-icon">📁</div>
-                            <div class="dashboard-info">
-                                <span class="dashboard-number" id="dashTotalCategories">0</span>
-                                <span class="dashboard-label">Kategorien</span>
-                            </div>
-                        </div>
-                        <div class="dashboard-card">
-                            <div class="dashboard-icon">🏷️</div>
-                            <div class="dashboard-info">
-                                <span class="dashboard-number" id="dashTotalTags">0</span>
-                                <span class="dashboard-label">Tags</span>
-                            </div>
-                        </div>
-                        <div class="dashboard-card">
-                            <div class="dashboard-icon">📅</div>
-                            <div class="dashboard-info">
-                                <span class="dashboard-number" id="dashLastUpdate">-</span>
-                                <span class="dashboard-label">Letztes Update</span>
-                            </div>
-                        </div>
-                    </div>
+            <section class="panel-section">
+                <h4>Status</h4>
+                <ul class="status-list" id="statusLog"></ul>
+            </section>
+        </aside>
 
-                    <div class="recent-activity">
-                        <h4>Letzte Aktivitäten</h4>
-                        <div id="recentActivity">
-                            <!-- Recent activity will be dynamically inserted -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Posts Section -->
-                <div class="admin-section" id="adminPosts">
-                    <div class="section-header">
-                        <h3>Artikel verwalten</h3>
-                        <button id="addNewPost" class="btn btn-primary">Neuer Artikel</button>
-                    </div>
-
-                    <div id="postEditor" class="post-editor" style="display: none;">
-                        <h4 id="editorTitle">Neuen Artikel erstellen</h4>
-                        <form id="postForm">
-                            <input type="hidden" id="postId">
-                            
-                            <div class="form-row">
-                                <div class="form-group full-width">
-                                    <label for="postTitle">Titel*</label>
-                                    <input type="text" id="postTitle" required>
-                                </div>
-                            </div>
-
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="postAlias">Alias/Spitzname</label>
-                                    <input type="text" id="postAlias">
-                                </div>
-                                <div class="form-group">
-                                    <label for="postAuthor">Autor</label>
-                                    <input type="text" id="postAuthor" value="Redaktion">
-                                </div>
-                            </div>
-
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="postYears">Zeitraum*</label>
-                                    <input type="text" id="postYears" placeholder="z.B. 1978-1991" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="postLocation">Ort/Region*</label>
-                                    <input type="text" id="postLocation" required>
-                                </div>
-                            </div>
-
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="postVictims">Anzahl der Opfer*</label>
-                                    <input type="number" id="postVictims" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="postStatus">Status*</label>
-                                    <select id="postStatus" required>
-                                        <option value="Gefasst">Gefasst</option>
-                                        <option value="Verstorben">Verstorben</option>
-                                        <option value="Ungeklärt">Ungeklärt</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="postCategory">Kategorie*</label>
-                                    <select id="postCategory" required>
-                                        <!-- Categories will be dynamically inserted -->
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="postTags">Tags (kommagetrennt)</label>
-                                    <input type="text" id="postTags" placeholder="z.B. USA, 1980er, Organisiert">
-                                </div>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label for="postImage">Titelbild-URL</label>
-                                <input type="text" id="postImage" placeholder="https://...">
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label for="postExcerpt">Kurzbeschreibung (Excerpt)*</label>
-                                <textarea id="postExcerpt" rows="3" required></textarea>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label for="postContent">Hauptinhalt*</label>
-                                <textarea id="postContent" rows="8" required></textarea>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label for="postMO">Modus Operandi</label>
-                                <textarea id="postMO" rows="4"></textarea>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label for="postInvestigation">Ermittlungen & Aufklärung</label>
-                                <textarea id="postInvestigation" rows="4"></textarea>
-                            </div>
-
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary">Veröffentlichen</button>
-                                <button type="button" id="previewPost" class="btn btn-secondary">Vorschau</button>
-                                <button type="button" id="cancelPost" class="btn btn-secondary">Abbrechen</button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <div id="postsList" class="admin-list">
-                        <h4>Alle Artikel</h4>
-                        <div id="postsTable">
-                            <!-- Posts table will be dynamically inserted -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Categories Section -->
-                <div class="admin-section" id="adminCategories">
-                    <div class="section-header">
-                        <h3>Kategorien verwalten</h3>
-                        <button id="addNewCategory" class="btn btn-primary">Neue Kategorie</button>
-                    </div>
-
-                    <div id="categoryEditor" class="category-editor" style="display: none;">
-                        <form id="categoryForm">
-                            <input type="hidden" id="categoryId">
-                            <div class="form-group">
-                                <label for="categoryName">Kategorie-Name*</label>
-                                <input type="text" id="categoryName" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="categoryDescription">Beschreibung</label>
-                                <textarea id="categoryDescription" rows="3"></textarea>
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary">Speichern</button>
-                                <button type="button" id="cancelCategory" class="btn btn-secondary">Abbrechen</button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <div id="categoriesList" class="admin-list">
-                        <!-- Categories list will be dynamically inserted -->
-                    </div>
-                </div>
-
-                <!-- Tags Section -->
-                <div class="admin-section" id="adminTags">
-                    <div class="section-header">
-                        <h3>Tags verwalten</h3>
-                        <button id="addNewTag" class="btn btn-primary">Neuer Tag</button>
-                    </div>
-
-                    <div id="tagEditor" class="tag-editor" style="display: none;">
-                        <form id="tagForm">
-                            <input type="hidden" id="tagId">
-                            <div class="form-group">
-                                <label for="tagName">Tag-Name*</label>
-                                <input type="text" id="tagName" required>
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary">Speichern</button>
-                                <button type="button" id="cancelTag" class="btn btn-secondary">Abbrechen</button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <div id="tagsList" class="admin-list">
-                        <!-- Tags list will be dynamically inserted -->
-                    </div>
-                </div>
-
-                <!-- Media Section -->
-                <div class="admin-section" id="adminMedia">
-                    <h3>Medien-Bibliothek</h3>
-                    <div class="media-info">
-                        <p>Verwenden Sie externe Bild-URLs (z.B. von Unsplash, Imgur) für Ihre Artikel.</p>
-                        <p>Empfohlene Bildgröße: 1200x800 Pixel</p>
-                    </div>
-                    <div class="media-suggestions">
-                        <h4>Empfohlene Bildquellen:</h4>
-                        <ul>
-                            <li><a href="https://unsplash.com" target="_blank">Unsplash</a> - Kostenlose hochauflösende Bilder</li>
-                            <li><a href="https://pixabay.com" target="_blank">Pixabay</a> - Freie Bilder und Videos</li>
-                            <li><a href="https://pexels.com" target="_blank">Pexels</a> - Kostenlose Stock-Fotos</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Settings Section -->
-                <div class="admin-section" id="adminSettings">
-                    <h3>Einstellungen</h3>
-                    <form id="settingsForm">
-                        <div class="form-group">
-                            <label for="siteName">Blog-Name</label>
-                            <input type="text" id="siteName" value="Archiv der Dunkelheit">
-                        </div>
-                        <div class="form-group">
-                            <label for="siteDescription">Blog-Beschreibung</label>
-                            <textarea id="siteDescription" rows="3">Kriminologie Blog - Dokumentation der dunkelsten Kapitel der Kriminalgeschichte</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label for="postsPerPage">Artikel pro Seite</label>
-                            <input type="number" id="postsPerPage" value="6" min="1" max="20">
-                        </div>
-                        <div class="form-group">
-                            <label>Daten-Management</label>
-                            <div class="data-management">
-                                <button type="button" id="exportData" class="btn btn-secondary">Daten exportieren</button>
-                                <button type="button" id="importData" class="btn btn-secondary">Daten importieren</button>
-                                <button type="button" id="clearData" class="btn btn-danger">Alle Daten löschen</button>
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Einstellungen speichern</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <footer class="footer">
-        <p>&copy; 2025 Archiv der Dunkelheit. Nur zu Dokumentationszwecken.</p>
-    </footer>
+        <div class="backdrop" id="panelBackdrop"></div>
+    </div>
 
     <script src="script.js"></script>
 </body>
 </html>
-
