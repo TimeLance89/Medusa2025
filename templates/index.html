@@ -89,9 +89,9 @@
                             <h3>{{ section.title }}</h3>
                             <span class="section-hint">Filmübersicht</span>
                         </div>
-                        {% if section.items %}
+                        {% if section["items"] %}
                         <div class="carousel-track">
-                            {% for movie in section.items %}
+                            {% for movie in section["items"] %}
                             {% set poster_url = movie.poster_path and "https://image.tmdb.org/t/p/w500" + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
                             {% set backdrop_url = movie.backdrop_path and "https://image.tmdb.org/t/p/w780" + movie.backdrop_path or '' %}
                             <article class="card" role="button" tabindex="0"
@@ -134,9 +134,9 @@
                             <h3>{{ section.title }}</h3>
                             <span class="section-hint">Serienübersicht</span>
                         </div>
-                        {% if section.items %}
+                        {% if section["items"] %}
                         <div class="carousel-track">
-                            {% for show in section.items %}
+                            {% for show in section["items"] %}
                             {% set poster_url = show.poster_path and "https://image.tmdb.org/t/p/w500" + show.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
                             {% set backdrop_url = show.backdrop_path and "https://image.tmdb.org/t/p/w780" + show.backdrop_path or '' %}
                             <article class="card" role="button" tabindex="0"
