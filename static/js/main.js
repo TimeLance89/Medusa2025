@@ -10,7 +10,17 @@ const detailOverviewSecondary = document.getElementById('detailOverviewSecondary
 const detailCast = document.getElementById('detailCast');
 const detailStreaming = document.getElementById('detailStreaming');
 const detailTrailer = document.getElementById('detailTrailer');
+const detailFacts = document.getElementById('detailFacts');
 const detailBackButton = detailPanel?.querySelector('.detail-back');
+const watchButton = document.getElementById('detailWatch');
+const trailerButton = document.getElementById('detailTrailerButton');
+const trailerModal = document.getElementById('trailerModal');
+const trailerModalFrame = document.getElementById('trailerModalFrame');
+const trailerModalTitle = document.getElementById('trailerModalTitle');
+const trailerModalClose = trailerModal?.querySelector('.modal-close');
+const trailerModalBackdrop = trailerModal?.querySelector('.modal-backdrop');
+const watchButtonLabel = watchButton?.querySelector('span:last-child');
+const watchButtonDefaultLabel = watchButtonLabel?.textContent || 'Ansehen';
 
 let changeSection = () => {};
 let currentSectionName = 'start';
@@ -20,12 +30,27 @@ let currentSettings = {
   kinox_start_page: 1,
   kinox_end_page: 1,
 };
+let currentTrailer = null;
+let currentStreamingLinks = [];
+let currentMovieTitle = '';
 
 function showToast(message, variant = 'info') {
   toast.textContent = message;
   toast.dataset.variant = variant;
   toast.classList.add('show');
   setTimeout(() => toast.classList.remove('show'), 4000);
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  const [year, month, day] = String(value).split('-');
+  if (year && month && day) {
+    return `${day.padStart(2, '0')}.${month.padStart(2, '0')}.${year}`;
+  }
+  if (year && month) {
+    return `${month.padStart(2, '0')}.${year}`;
+  }
+  return value;
 }
 
 async function callApi(url, options = {}) {
@@ -268,6 +293,30 @@ function bindContentCards() {
   });
 }
 
+function closeTrailerModal() {
+  if (!trailerModal) return;
+  trailerModal.classList.remove('show');
+  trailerModal.setAttribute('aria-hidden', 'true');
+  if (trailerModalFrame) {
+    trailerModalFrame.src = '';
+  }
+}
+
+function openTrailerModal() {
+  if (!trailerModal || !currentTrailer) return;
+  const embedUrl = `https://www.youtube.com/embed/${currentTrailer.key}?rel=0&autoplay=1`;
+  trailerModal.classList.add('show');
+  trailerModal.setAttribute('aria-hidden', 'false');
+  if (trailerModalFrame) {
+    trailerModalFrame.src = embedUrl;
+  }
+  if (trailerModalTitle) {
+    const trailerName = currentTrailer.name || 'Trailer';
+    const title = currentMovieTitle ? `${currentMovieTitle} – ${trailerName}` : trailerName;
+    trailerModalTitle.textContent = title;
+  }
+}
+
 function resetDetailView() {
   if (detailBackdrop) {
     detailBackdrop.style.backgroundImage = 'none';
@@ -297,10 +346,28 @@ function resetDetailView() {
   if (detailTrailer) {
     detailTrailer.innerHTML = '';
   }
+  if (detailFacts) {
+    detailFacts.innerHTML = '';
+  }
   if (detailTagline) {
     detailTagline.textContent = '';
     detailTagline.style.display = 'none';
   }
+  if (watchButton) {
+    watchButton.disabled = true;
+    watchButton.removeAttribute('data-stream-url');
+    watchButton.removeAttribute('data-stream-name');
+  }
+  if (watchButtonLabel) {
+    watchButtonLabel.textContent = watchButtonDefaultLabel;
+  }
+  if (trailerButton) {
+    trailerButton.disabled = true;
+  }
+  currentTrailer = null;
+  currentStreamingLinks = [];
+  currentMovieTitle = '';
+  closeTrailerModal();
 }
 
 function closeDetail() {
@@ -324,15 +391,42 @@ function showDetailLoadingState() {
     loadingMessage.textContent = 'Trailer wird geladen…';
     detailTrailer.appendChild(loadingMessage);
   }
+  if (detailFacts) {
+    const loadingFact = document.createElement('li');
+    loadingFact.classList.add('empty');
+    loadingFact.textContent = 'Details werden geladen…';
+    detailFacts.appendChild(loadingFact);
+  }
 }
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && currentSectionName === 'detail') {
+  if (event.key !== 'Escape') {
+    return;
+  }
+  if (trailerModal?.classList.contains('show')) {
+    closeTrailerModal();
+    return;
+  }
+  if (currentSectionName === 'detail') {
     closeDetail();
   }
 });
 
 detailBackButton?.addEventListener('click', closeDetail);
+watchButton?.addEventListener('click', () => {
+  if (watchButton.disabled) {
+    return;
+  }
+  const streamUrl = watchButton.dataset.streamUrl;
+  if (streamUrl) {
+    window.open(streamUrl, '_blank', 'noopener');
+  } else if (detailStreaming) {
+    detailStreaming.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+trailerButton?.addEventListener('click', openTrailerModal);
+trailerModalClose?.addEventListener('click', closeTrailerModal);
+trailerModalBackdrop?.addEventListener('click', closeTrailerModal);
 
 async function openMovieDetail(movieId) {
   try {
@@ -350,7 +444,18 @@ async function openMovieDetail(movieId) {
 }
 
 function populateDetail(movie) {
-  if (!detailPanel || !detailPoster || !detailBackdrop || !detailTitle || !detailMeta || !detailCast || !detailStreaming || !detailOverview || !detailTagline) {
+  if (
+    !detailPanel ||
+    !detailPoster ||
+    !detailBackdrop ||
+    !detailTitle ||
+    !detailMeta ||
+    !detailCast ||
+    !detailStreaming ||
+    !detailOverview ||
+    !detailTagline ||
+    !detailFacts
+  ) {
     return;
   }
 
@@ -358,10 +463,12 @@ function populateDetail(movie) {
   const posterUrl = movie.poster_url || posterPlaceholder;
   const backdropUrl = movie.backdrop_url || posterUrl;
 
+  currentMovieTitle = movie.title || 'Unbekannter Titel';
+
   detailPoster.src = posterUrl;
-  detailPoster.alt = movie.title || 'Unbekannter Titel';
+  detailPoster.alt = currentMovieTitle;
   detailBackdrop.style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
-  detailTitle.textContent = movie.title || 'Unbekannter Titel';
+  detailTitle.textContent = currentMovieTitle;
 
   if (movie.tagline) {
     detailTagline.textContent = movie.tagline;
@@ -390,8 +497,8 @@ function populateDetail(movie) {
   if (typeof movie.rating === 'number' && movie.rating > 0) {
     metaEntries.push(`⭐ ${movie.rating.toFixed(1)}`);
   }
-  if (Array.isArray(movie.genres)) {
-    metaEntries.push(...movie.genres);
+  if (Array.isArray(movie.genres) && movie.genres.length) {
+    metaEntries.push(...movie.genres.slice(0, 3));
   }
   if (!metaEntries.length) {
     metaEntries.push('Keine zusätzlichen Infos');
@@ -401,6 +508,69 @@ function populateDetail(movie) {
     span.textContent = entry;
     detailMeta.appendChild(span);
   });
+
+  const streamingLinks = Array.isArray(movie.streaming_links)
+    ? movie.streaming_links.filter((link) => link && link.url)
+    : [];
+  currentStreamingLinks = streamingLinks;
+
+  if (watchButton) {
+    if (streamingLinks.length) {
+      const primary = streamingLinks[0];
+      watchButton.disabled = false;
+      watchButton.dataset.streamUrl = primary.url;
+      watchButton.dataset.streamName = primary.source_name || '';
+      if (watchButtonLabel) {
+        const streamLabel = primary.source_name ? `Stream öffnen (${primary.source_name})` : 'Stream öffnen';
+        watchButtonLabel.textContent = streamLabel;
+      }
+    } else {
+      watchButton.disabled = true;
+      watchButton.removeAttribute('data-stream-url');
+      watchButton.removeAttribute('data-stream-name');
+      if (watchButtonLabel) {
+        watchButtonLabel.textContent = watchButtonDefaultLabel;
+      }
+    }
+  }
+
+  detailFacts.innerHTML = '';
+  const facts = [];
+  const formattedDate = formatDate(movie.release_date);
+  if (formattedDate) {
+    facts.push({ label: 'Veröffentlichung', value: formattedDate });
+  }
+  if (Number.isFinite(movie.runtime) && movie.runtime > 0) {
+    facts.push({ label: 'Laufzeit', value: `${movie.runtime} Minuten` });
+  }
+  if (typeof movie.rating === 'number' && movie.rating > 0) {
+    facts.push({ label: 'Bewertung', value: `${movie.rating.toFixed(1)} / 10` });
+  }
+  if (Array.isArray(movie.genres) && movie.genres.length) {
+    facts.push({ label: movie.genres.length === 1 ? 'Genre' : 'Genres', value: movie.genres.join(', ') });
+  }
+  const streamCount = streamingLinks.length;
+  facts.push({ label: 'Streams', value: streamCount ? `${streamCount} Quelle${streamCount === 1 ? '' : 'n'}` : 'Keine Quellen' });
+
+  if (facts.length) {
+    facts.forEach((fact) => {
+      const li = document.createElement('li');
+      const labelSpan = document.createElement('span');
+      labelSpan.classList.add('detail-facts__label');
+      labelSpan.textContent = fact.label;
+      const valueSpan = document.createElement('span');
+      valueSpan.classList.add('detail-facts__value');
+      valueSpan.textContent = fact.value;
+      li.appendChild(labelSpan);
+      li.appendChild(valueSpan);
+      detailFacts.appendChild(li);
+    });
+  } else {
+    const emptyFact = document.createElement('li');
+    emptyFact.classList.add('empty');
+    emptyFact.textContent = 'Keine zusätzlichen Details.';
+    detailFacts.appendChild(emptyFact);
+  }
 
   detailCast.innerHTML = '';
   if (Array.isArray(movie.cast) && movie.cast.length) {
@@ -417,16 +587,14 @@ function populateDetail(movie) {
   }
 
   detailStreaming.innerHTML = '';
-  if (Array.isArray(movie.streaming_links) && movie.streaming_links.length) {
-    movie.streaming_links.forEach((link, index) => {
+  if (streamingLinks.length) {
+    streamingLinks.forEach((link, index) => {
       const wrapper = document.createElement('div');
       wrapper.classList.add('stream-embed');
 
       const header = document.createElement('div');
       header.classList.add('stream-embed__header');
-      header.textContent = `${link.source_name || 'Stream'}${
-        link.mirror_info ? ' · ' + link.mirror_info : ''
-      }`;
+      header.textContent = `${link.source_name || 'Stream'}${link.mirror_info ? ' · ' + link.mirror_info : ''}`;
 
       const frame = document.createElement('iframe');
       frame.classList.add('stream-embed__frame');
@@ -456,24 +624,37 @@ function populateDetail(movie) {
     detailStreaming.appendChild(empty);
   }
 
+  currentTrailer = null;
   if (detailTrailer) {
     detailTrailer.innerHTML = '';
     const trailer = movie.trailer;
     if (trailer?.site === 'YouTube' && trailer?.key) {
-      const iframe = document.createElement('iframe');
-      iframe.src = `https://www.youtube.com/embed/${trailer.key}?rel=0`;
-      iframe.allowFullscreen = true;
-      iframe.loading = 'lazy';
-      iframe.referrerPolicy = 'no-referrer';
-      iframe.title = `${movie.title || 'Trailer'} – ${trailer.name || 'YouTube'}`;
-      iframe.setAttribute('allow', 'fullscreen; picture-in-picture; encrypted-media');
-      detailTrailer.appendChild(iframe);
+      currentTrailer = trailer;
+      const thumbnail = `https://img.youtube.com/vi/${trailer.key}/hqdefault.jpg`;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.classList.add('trailer-card');
+      card.innerHTML = `
+        <div class="trailer-card__media" style="background-image: url('${thumbnail}')">
+          <span class="trailer-card__play">▶</span>
+        </div>
+        <div class="trailer-card__body">
+          <h4>${currentMovieTitle}</h4>
+          <p>${trailer.name || 'YouTube'}</p>
+        </div>
+      `;
+      card.addEventListener('click', openTrailerModal);
+      detailTrailer.appendChild(card);
     } else {
       const emptyTrailer = document.createElement('p');
       emptyTrailer.classList.add('empty');
       emptyTrailer.textContent = 'Kein Trailer verfügbar.';
       detailTrailer.appendChild(emptyTrailer);
     }
+  }
+
+  if (trailerButton) {
+    trailerButton.disabled = !currentTrailer;
   }
 }
 
