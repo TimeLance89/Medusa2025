@@ -1,4 +1,16 @@
 const toast = document.getElementById('toast');
+const detailOverlay = document.getElementById('detailOverlay');
+const detailBackdrop = document.getElementById('detailBackdrop');
+const detailPoster = document.getElementById('detailPoster');
+const detailTitle = document.getElementById('detailTitle');
+const detailTagline = document.getElementById('detailTagline');
+const detailMeta = document.getElementById('detailMeta');
+const detailOverview = document.getElementById('detailOverview');
+const detailCast = document.getElementById('detailCast');
+const detailStreaming = document.getElementById('detailStreaming');
+const detailCloseButton = detailOverlay?.querySelector('.detail-close');
+
+let changeSection = () => {};
 let currentSettings = {
   tmdb_api_key: '',
   kinox_start_page: 1,
@@ -69,21 +81,89 @@ async function scrapeKinox() {
   }
 }
 
-function initHero() {
-  const cards = Array.from(document.querySelectorAll('.card'));
-  const hero = document.getElementById('hero');
-  if (!cards.length || !hero) return;
+async function resetScrapedContent() {
+  if (!window.confirm('Möchtest du wirklich alle gescrapten Inhalte löschen?')) {
+    return;
+  }
+  try {
+    showToast('Gescrapte Inhalte werden gelöscht...');
+    const { success, removed_links } = await callApi('/api/reset/scraped', {
+      method: 'POST',
+    });
+    if (success) {
+      showToast(`${removed_links} gescrapte Links gelöscht.`, 'success');
+      window.location.reload();
+    }
+  } catch (_) {
+    // Fehler bereits behandelt
+  }
+}
 
-  function setHero(card) {
-    const title = card.dataset.title;
-    const image = card.querySelector('.card-poster').style.backgroundImage;
-    hero.style.setProperty('--hero-image', image || "url('')");
-    hero.querySelector('h2').textContent = title;
+function initNavigation() {
+  const menuItems = Array.from(document.querySelectorAll('.menu-item[data-target]'));
+  const panels = Array.from(document.querySelectorAll('[data-section]'));
+
+  function setSection(name) {
+    panels.forEach((panel) => {
+      const isActive = panel.dataset.section === name;
+      panel.classList.toggle('active', isActive);
+    });
+    menuItems.forEach((item) => {
+      item.classList.toggle('active', item.dataset.target === name);
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  document.getElementById('refreshHero').addEventListener('click', () => {
+  changeSection = setSection;
+
+  menuItems.forEach((item) => {
+    item.addEventListener('click', (event) => {
+      event.preventDefault();
+      const target = item.dataset.target;
+      if (target) {
+        setSection(target);
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-target]').forEach((element) => {
+    if (element.classList.contains('menu-item')) return;
+    element.addEventListener('click', (event) => {
+      event.preventDefault();
+      const target = element.dataset.target;
+      if (target) {
+        setSection(target);
+      }
+    });
+  });
+
+  setSection('start');
+}
+
+function initHero() {
+  const hero = document.getElementById('hero');
+  const cards = Array.from(document.querySelectorAll('[data-section="start"] .card[data-movie-id]'));
+  if (!hero || !cards.length) return;
+
+  const heroTitle = hero.querySelector('h2');
+  const heroDescription = hero.querySelector('p');
+
+  function setHero(card) {
+    const title = card.dataset.title || 'Unbekannter Titel';
+    const overview = card.dataset.overview || 'Keine Beschreibung verfügbar.';
+    const backdrop = card.dataset.backdrop || card.dataset.poster || '';
+    const text = overview.length > 280 ? `${overview.slice(0, 277)}…` : overview;
+
+    hero.style.setProperty('--hero-image', backdrop ? `url('${backdrop}')` : "url('')");
+    heroTitle.textContent = title;
+    heroDescription.textContent = text;
+  }
+
+  document.getElementById('refreshHero')?.addEventListener('click', () => {
     const randomCard = cards[Math.floor(Math.random() * cards.length)];
-    setHero(randomCard);
+    if (randomCard) {
+      setHero(randomCard);
+    }
   });
 
   setHero(cards[0]);
@@ -93,14 +173,11 @@ function bindButtons() {
   const syncButton = document.getElementById('syncTmdb');
   const scrapeButton = document.getElementById('scrapeKinox');
   const settingsForm = document.getElementById('settingsForm');
+  const resetButton = document.getElementById('resetScraped');
 
-  if (syncButton) {
-    syncButton.addEventListener('click', syncTmdb);
-  }
-
-  if (scrapeButton) {
-    scrapeButton.addEventListener('click', scrapeKinox);
-  }
+  syncButton?.addEventListener('click', syncTmdb);
+  scrapeButton?.addEventListener('click', scrapeKinox);
+  resetButton?.addEventListener('click', resetScrapedContent);
 
   if (settingsForm) {
     settingsForm.addEventListener('submit', saveSettings);
@@ -153,6 +230,179 @@ async function saveSettings(event) {
   }
 }
 
+function bindContentCards() {
+  const triggers = document.querySelectorAll('.card[data-movie-id], .view-detail[data-movie-id], .scraper-card[data-movie-id]');
+
+  triggers.forEach((element) => {
+    if (element.dataset.detailBound === 'true') return;
+    element.dataset.detailBound = 'true';
+
+    const activate = (event) => {
+      if (event) {
+        event.preventDefault();
+        if (typeof event.stopPropagation === 'function') {
+          event.stopPropagation();
+        }
+      }
+      const movieId = element.dataset.movieId;
+      if (movieId) {
+        openMovieDetail(movieId);
+      }
+    };
+
+    element.addEventListener('click', activate);
+
+    if (element.classList.contains('card') || element.classList.contains('scraper-card')) {
+      element.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          activate();
+        }
+      });
+    }
+  });
+}
+
+function closeDetail() {
+  if (!detailOverlay) return;
+  detailOverlay.hidden = true;
+  document.body.classList.remove('modal-open');
+  if (detailBackdrop) {
+    detailBackdrop.style.backgroundImage = 'none';
+  }
+  if (detailPoster) {
+    detailPoster.src = detailPoster.dataset.placeholder || '';
+    detailPoster.alt = 'Poster';
+  }
+  if (detailTitle) {
+    detailTitle.textContent = '';
+  }
+  if (detailOverview) {
+    detailOverview.textContent = '';
+  }
+  if (detailMeta) {
+    detailMeta.innerHTML = '';
+  }
+  if (detailCast) {
+    detailCast.innerHTML = '';
+  }
+  if (detailStreaming) {
+    detailStreaming.innerHTML = '';
+  }
+  if (detailTagline) {
+    detailTagline.textContent = '';
+  }
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !detailOverlay?.hidden) {
+    closeDetail();
+  }
+});
+
+detailOverlay?.addEventListener('click', (event) => {
+  if (event.target === detailOverlay) {
+    closeDetail();
+  }
+});
+
+detailCloseButton?.addEventListener('click', closeDetail);
+
+async function openMovieDetail(movieId) {
+  try {
+    const { success, movie } = await callApi(`/api/movies/${movieId}`);
+    if (!success) return;
+    populateDetail(movie);
+  } catch (_) {
+    // Fehler bereits über Toast angezeigt
+  }
+}
+
+function populateDetail(movie) {
+  if (!detailOverlay || !detailPoster || !detailBackdrop || !detailTitle || !detailMeta || !detailCast || !detailStreaming || !detailOverview || !detailTagline) {
+    return;
+  }
+
+  const posterPlaceholder = detailPoster.dataset.placeholder || '';
+  const posterUrl = movie.poster_url || posterPlaceholder;
+  const backdropUrl = movie.backdrop_url || posterUrl;
+
+  detailPoster.src = posterUrl;
+  detailPoster.alt = movie.title || 'Poster';
+  detailBackdrop.style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
+  detailTitle.textContent = movie.title || 'Unbekannter Titel';
+
+  if (movie.tagline) {
+    detailTagline.textContent = movie.tagline;
+    detailTagline.style.display = '';
+  } else {
+    detailTagline.textContent = '';
+    detailTagline.style.display = 'none';
+  }
+
+  detailOverview.textContent = movie.overview || 'Keine Beschreibung verfügbar.';
+
+  detailMeta.innerHTML = '';
+  const metaEntries = [];
+  const releaseYear = movie.release_date ? movie.release_date.split('-')[0] : '';
+  if (releaseYear) {
+    metaEntries.push(releaseYear);
+  }
+  if (Number.isFinite(movie.runtime) && movie.runtime > 0) {
+    metaEntries.push(`${movie.runtime} Min.`);
+  }
+  if (typeof movie.rating === 'number' && movie.rating > 0) {
+    metaEntries.push(`⭐ ${movie.rating.toFixed(1)}`);
+  }
+  if (Array.isArray(movie.genres)) {
+    metaEntries.push(...movie.genres);
+  }
+  if (!metaEntries.length) {
+    metaEntries.push('Keine zusätzlichen Infos');
+  }
+  metaEntries.forEach((entry) => {
+    const span = document.createElement('span');
+    span.textContent = entry;
+    detailMeta.appendChild(span);
+  });
+
+  detailCast.innerHTML = '';
+  if (Array.isArray(movie.cast) && movie.cast.length) {
+    movie.cast.forEach((actor) => {
+      const li = document.createElement('li');
+      li.textContent = actor;
+      detailCast.appendChild(li);
+    });
+  } else {
+    const li = document.createElement('li');
+    li.textContent = 'Keine Besetzung verfügbar.';
+    li.classList.add('empty');
+    detailCast.appendChild(li);
+  }
+
+  detailStreaming.innerHTML = '';
+  if (Array.isArray(movie.streaming_links) && movie.streaming_links.length) {
+    movie.streaming_links.forEach((link) => {
+      const anchor = document.createElement('a');
+      anchor.href = link.url;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener';
+      anchor.textContent = `${link.source_name}${link.mirror_info ? ' · ' + link.mirror_info : ''}`;
+      detailStreaming.appendChild(anchor);
+    });
+  } else {
+    const empty = document.createElement('p');
+    empty.classList.add('empty');
+    empty.textContent = 'Keine Streams verfügbar.';
+    detailStreaming.appendChild(empty);
+  }
+
+  detailOverlay.hidden = false;
+  document.body.classList.add('modal-open');
+}
+
 bindButtons();
+initNavigation();
+bindContentCards();
 initHero();
 loadSettings();
