@@ -573,12 +573,68 @@ function populateDetail(movie) {
   }
 
   detailCast.innerHTML = '';
-  if (Array.isArray(movie.cast) && movie.cast.length) {
-    movie.cast.forEach((actor) => {
+  const castPlaceholder = detailCast.dataset.placeholder || '';
+  const castEntries = Array.isArray(movie.cast) ? movie.cast.filter(Boolean) : [];
+
+  if (castEntries.length) {
+    castEntries.forEach((entry) => {
+      const castItem = typeof entry === 'string' ? { name: entry } : entry || {};
+      const name = (typeof castItem.name === 'string' && castItem.name.trim()) ||
+        (typeof entry === 'string' ? entry : '');
+      if (!name) {
+        return;
+      }
+
+      const character = typeof castItem.character === 'string' ? castItem.character.trim() : '';
+      const profilePath = castItem.profile_path || castItem.profilePath || '';
+      const avatarUrl = profilePath ? `https://image.tmdb.org/t/p/w185${profilePath}` : castPlaceholder;
+
       const li = document.createElement('li');
-      li.textContent = actor;
+      li.classList.add('cast-card');
+
+      const avatar = document.createElement('div');
+      avatar.classList.add('cast-card__avatar');
+
+      if (avatarUrl) {
+        const img = document.createElement('img');
+        img.src = avatarUrl;
+        img.alt = name;
+        img.loading = 'lazy';
+        avatar.appendChild(img);
+      } else {
+        avatar.classList.add('cast-card__avatar--initial');
+        avatar.textContent = name.slice(0, 2).toUpperCase();
+      }
+
+      const body = document.createElement('div');
+      body.classList.add('cast-card__body');
+
+      const nameEl = document.createElement('span');
+      nameEl.classList.add('cast-card__name');
+      nameEl.textContent = name;
+      body.appendChild(nameEl);
+
+      const roleEl = document.createElement('span');
+      roleEl.classList.add('cast-card__role');
+      if (character) {
+        roleEl.textContent = character;
+      } else {
+        roleEl.textContent = 'Darsteller:in';
+        roleEl.classList.add('cast-card__role--muted');
+      }
+      body.appendChild(roleEl);
+
+      li.appendChild(avatar);
+      li.appendChild(body);
       detailCast.appendChild(li);
     });
+
+    if (!detailCast.children.length) {
+      const li = document.createElement('li');
+      li.textContent = 'Keine Besetzung verfügbar.';
+      li.classList.add('empty');
+      detailCast.appendChild(li);
+    }
   } else {
     const li = document.createElement('li');
     li.textContent = 'Keine Besetzung verfügbar.';
