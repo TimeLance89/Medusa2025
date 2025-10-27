@@ -5,6 +5,7 @@ from typing import List, Optional
 import requests
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 from sqlalchemy.engine import make_url
 
 from scrapers.kinox import scrape_detail as scrape_kinox_detail
@@ -126,11 +127,23 @@ def upsert_movies(tmdb_movies: List[dict]) -> List[Movie]:
     return stored_movies
 
 
+def _generate_placeholder_tmdb_id() -> int:
+    """Return a unique negative TMDB id for locally scraped titles."""
+    lowest_placeholder = (
+        db.session.query(func.min(Movie.tmdb_id))
+        .filter(Movie.tmdb_id < 0)
+        .scalar()
+    )
+    if lowest_placeholder is None:
+        return -1
+    return lowest_placeholder - 1
+
+
 def attach_streaming_link(movie_title: str, streaming_url: str, mirror_info: Optional[str] = None) -> StreamingLink:
     """Create or update a streaming link for a movie based on its title."""
     movie = Movie.query.filter_by(title=movie_title).first()
     if movie is None:
-        movie = Movie(tmdb_id=-1, title=movie_title)
+        movie = Movie(tmdb_id=_generate_placeholder_tmdb_id(), title=movie_title)
         db.session.add(movie)
         db.session.flush()
 
