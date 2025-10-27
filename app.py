@@ -1,6 +1,7 @@
 import os
+import re
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Set, Tuple
 
 import requests
 from flask import Flask, jsonify, render_template, request
@@ -187,6 +188,118 @@ def build_tmdb_image(path: Optional[str], size: str = "w500") -> Optional[str]:
     return f"https://image.tmdb.org/t/p/{size}{path}"
 
 
+_TRAILING_DESCRIPTOR_PATTERN = re.compile(
+    r"(?i)\b(stream|online|anschauen|kostenlos|gratis|hd|ganzer\s+film|full\s+movie|german|deutsch|kino)\b.*$"
+)
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _extract_title_and_year(raw_title: str) -> Tuple[str, Optional[int]]:
+    if not raw_title:
+        return "", None
+
+    title = raw_title.strip()
+    year_match = re.search(r"(19|20)\d{2}", title)
+    year: Optional[int] = None
+    if year_match:
+        year = int(year_match.group())
+        title = title[: year_match.start()]
+
+    title = _TRAILING_DESCRIPTOR_PATTERN.sub("", title).strip(" -:|()[]")
+    title = re.sub(r"\s+", " ", title).strip()
+    if not title:
+        title = raw_title.strip()
+
+    return title, year
+
+
+def search_tmdb_by_title(raw_title: str) -> Optional[dict]:
+    api_key = get_tmdb_api_key()
+    if not api_key:
+        return None
+
+    base_title, year = _extract_title_and_year(raw_title)
+    normalized_base = _normalize_text(base_title) if base_title else ""
+
+    attempts: List[Tuple[str, Optional[int]]] = []
+    if base_title:
+        attempts.append((base_title, year))
+        attempts.append((base_title, None))
+    stripped = raw_title.strip()
+    if stripped:
+        attempts.append((stripped, year))
+        attempts.append((stripped, None))
+
+    seen: Set[Tuple[str, Optional[int]]] = set()
+
+    for query, year_hint in attempts:
+        clean_query = query.strip()
+        if not clean_query:
+            continue
+
+        key = (clean_query.lower(), year_hint)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        params = {
+            "api_key": api_key,
+            "language": "de-DE",
+            "query": clean_query,
+            "include_adult": "false",
+        }
+        if year_hint:
+            params["year"] = year_hint
+
+        try:
+            response = requests.get(
+                "https://api.themoviedb.org/3/search/movie",
+                params=params,
+                timeout=20,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            app.logger.warning("TMDB search failed for %s: %s", clean_query, exc)
+            continue
+
+        results = response.json().get("results") or []
+        if not results:
+            continue
+
+        if year_hint:
+            for candidate in results:
+                release_year = (candidate.get("release_date") or "")[:4]
+                if release_year.isdigit() and int(release_year) == year_hint:
+                    return candidate
+
+        if normalized_base:
+            for candidate in results:
+                candidate_title = candidate.get("title") or candidate.get("original_title") or ""
+                if _normalize_text(candidate_title) == normalized_base:
+                    return candidate
+
+        return results[0]
+
+    return None
+
+
+def _apply_tmdb_metadata(movie: Movie, tmdb_data: dict) -> None:
+    movie.title = (
+        tmdb_data.get("title")
+        or tmdb_data.get("name")
+        or tmdb_data.get("original_title")
+        or movie.title
+    )
+    movie.overview = tmdb_data.get("overview")
+    movie.poster_path = tmdb_data.get("poster_path")
+    movie.backdrop_path = tmdb_data.get("backdrop_path")
+    movie.release_date = tmdb_data.get("release_date")
+    movie.rating = tmdb_data.get("vote_average")
+
+
 def upsert_movies(tmdb_movies: List[dict]) -> List[Movie]:
     """Store TMDB movies in the database, avoiding duplicates."""
     stored_movies: List[Movie] = []
@@ -219,18 +332,80 @@ def _generate_placeholder_tmdb_id() -> int:
 
 def attach_streaming_link(movie_title: str, streaming_url: str, mirror_info: Optional[str] = None) -> StreamingLink:
     """Create or update a streaming link for a movie based on its title."""
-    movie = Movie.query.filter_by(title=movie_title).first()
-    if movie is None:
-        movie = Movie(tmdb_id=_generate_placeholder_tmdb_id(), title=movie_title)
-        db.session.add(movie)
-        db.session.flush()
+    normalized_title = (movie_title or "").strip()
+    movie: Optional[Movie] = None
+    base_title, _ = _extract_title_and_year(normalized_title)
+    if normalized_title:
+        movie = (
+            Movie.query.filter(func.lower(Movie.title) == normalized_title.lower())
+            .first()
+        )
+
+    if movie is None and base_title and base_title.lower() != normalized_title.lower():
+        movie = (
+            Movie.query.filter(func.lower(Movie.title) == base_title.lower())
+            .first()
+        )
+
+    if movie is None and base_title and len(base_title) >= 3:
+        safe_title = base_title.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like_pattern = f"%{safe_title}%"
+        movie = (
+            Movie.query.filter(Movie.title.ilike(like_pattern, escape="\\"))
+            .order_by(func.length(Movie.title))
+            .first()
+        )
+
+    tmdb_entry: Optional[dict] = None
+    if normalized_title and (movie is None or movie.tmdb_id < 0):
+        tmdb_entry = search_tmdb_by_title(normalized_title)
+
+    if tmdb_entry:
+        existing_tmdb_movie = Movie.query.filter_by(tmdb_id=tmdb_entry["id"]).first()
+        if existing_tmdb_movie and movie and existing_tmdb_movie.id != movie.id:
+            for existing_link in list(movie.streaming_links):
+                existing_link.movie = existing_tmdb_movie
+            db.session.delete(movie)
+            movie = existing_tmdb_movie
+        elif existing_tmdb_movie:
+            movie = existing_tmdb_movie
+        else:
+            if movie is None:
+                movie = Movie(
+                    tmdb_id=tmdb_entry["id"],
+                    title=(
+                        tmdb_entry.get("title")
+                        or tmdb_entry.get("name")
+                        or normalized_title
+                        or "Unbekannt"
+                    ),
+                )
+            elif movie.tmdb_id < 0:
+                movie.tmdb_id = tmdb_entry["id"]
+
+        if movie is None:
+            movie = Movie(tmdb_id=tmdb_entry["id"], title=normalized_title or "Unbekannt")
+
+        _apply_tmdb_metadata(movie, tmdb_entry)
+    elif movie is None:
+        fallback_title = normalized_title or movie_title or "Unbekannt"
+        movie = Movie(tmdb_id=_generate_placeholder_tmdb_id(), title=fallback_title)
+
+    db.session.add(movie)
+    db.session.flush()
 
     link = StreamingLink.query.filter_by(movie_id=movie.id, url=streaming_url).first()
     if link is None:
-        link = StreamingLink(movie=movie, url=streaming_url, source_name="Kinox", mirror_info=mirror_info)
+        link = StreamingLink(
+            movie=movie,
+            url=streaming_url,
+            source_name="Kinox",
+            mirror_info=mirror_info,
+        )
     else:
         link.source_name = "Kinox"
         link.mirror_info = mirror_info
+
     db.session.add(link)
     db.session.commit()
     return link
@@ -330,13 +505,22 @@ def api_scrape_kinox():
 
 @app.route("/api/reset/scraped", methods=["POST"])
 def api_reset_scraped():
+    placeholder_count = Movie.query.filter(Movie.tmdb_id < 0).count()
+    tmdb_count = Movie.query.filter(Movie.tmdb_id > 0).count()
+
     removed_links = StreamingLink.query.delete(synchronize_session=False)
-    placeholder_movies = Movie.query.filter(Movie.tmdb_id < 0).all()
-    removed_movies = len(placeholder_movies)
-    for movie in placeholder_movies:
-        db.session.delete(movie)
+    removed_movies = Movie.query.delete(synchronize_session=False)
     db.session.commit()
-    return jsonify({"success": True, "removed_links": removed_links, "removed_movies": removed_movies})
+
+    return jsonify(
+        {
+            "success": True,
+            "removed_links": removed_links,
+            "removed_movies": removed_movies,
+            "removed_placeholder_movies": placeholder_count,
+            "removed_tmdb_movies": tmdb_count,
+        }
+    )
 
 
 @app.route("/api/tmdb/<category>")

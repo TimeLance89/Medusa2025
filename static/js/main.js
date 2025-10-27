@@ -382,13 +382,36 @@ function populateDetail(movie) {
 
   detailStreaming.innerHTML = '';
   if (Array.isArray(movie.streaming_links) && movie.streaming_links.length) {
-    movie.streaming_links.forEach((link) => {
-      const anchor = document.createElement('a');
-      anchor.href = link.url;
-      anchor.target = '_blank';
-      anchor.rel = 'noopener';
-      anchor.textContent = `${link.source_name}${link.mirror_info ? ' · ' + link.mirror_info : ''}`;
-      detailStreaming.appendChild(anchor);
+    movie.streaming_links.forEach((link, index) => {
+      const wrapper = document.createElement('div');
+      wrapper.classList.add('stream-embed');
+
+      const header = document.createElement('div');
+      header.classList.add('stream-embed__header');
+      header.textContent = `${link.source_name || 'Stream'}${
+        link.mirror_info ? ' · ' + link.mirror_info : ''
+      }`;
+
+      const frame = document.createElement('iframe');
+      frame.classList.add('stream-embed__frame');
+      frame.src = link.url;
+      frame.loading = 'lazy';
+      frame.allowFullscreen = true;
+      frame.referrerPolicy = 'no-referrer';
+      frame.title = `${header.textContent} – Stream ${index + 1}`;
+      frame.setAttribute('allow', 'fullscreen; picture-in-picture');
+
+      const fallback = document.createElement('a');
+      fallback.classList.add('stream-embed__link');
+      fallback.href = link.url;
+      fallback.target = '_blank';
+      fallback.rel = 'noopener';
+      fallback.textContent = 'Im neuen Tab öffnen';
+
+      wrapper.appendChild(header);
+      wrapper.appendChild(frame);
+      wrapper.appendChild(fallback);
+      detailStreaming.appendChild(wrapper);
     });
   } else {
     const empty = document.createElement('p');
