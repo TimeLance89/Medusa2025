@@ -269,9 +269,16 @@
                     <h3>Trailer &amp; Medien</h3>
                     <div id="detailTrailer" class="detail-trailer"></div>
                 </section>
-                <section class="detail-section">
-                    <h3>Besetzung</h3>
-                    <ul id="detailCast" class="detail-cast"></ul>
+                <section class="detail-section detail-section--cast">
+                    <div class="detail-section-head">
+                        <h3>Besetzung</h3>
+                        <span class="detail-section-subtitle">Die wichtigsten Schauspieler:innen auf einen Blick</span>
+                    </div>
+                    <ul
+                        id="detailCast"
+                        class="detail-cast"
+                        data-placeholder="{{ url_for('static', filename='images/profile-placeholder.svg') }}"
+                    ></ul>
                 </section>
             </div>
             <aside class="detail-body-side">

@@ -174,7 +174,20 @@ def fetch_tmdb_details(tmdb_id: int) -> dict:
 
     payload = response.json()
     cast_entries = payload.get("credits", {}).get("cast", [])
-    cast_names = [member.get("name") for member in cast_entries if member.get("name")]
+    cast_details: List[dict] = []
+    for member in cast_entries:
+        name = member.get("name")
+        if not name:
+            continue
+        cast_details.append(
+            {
+                "name": name,
+                "character": member.get("character"),
+                "profile_path": member.get("profile_path"),
+            }
+        )
+        if len(cast_details) >= 12:
+            break
 
     trailer_payload = {}
     for video in payload.get("videos", {}).get("results", []):
@@ -197,7 +210,7 @@ def fetch_tmdb_details(tmdb_id: int) -> dict:
         "runtime": payload.get("runtime"),
         "genres": [genre.get("name") for genre in payload.get("genres", []) if genre.get("name")],
         "tagline": payload.get("tagline"),
-        "cast": cast_names[:10],
+        "cast": cast_details,
         "trailer": trailer_payload,
     }
 
