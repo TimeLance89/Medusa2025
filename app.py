@@ -162,7 +162,8 @@ def fetch_tmdb_details(tmdb_id: int) -> dict:
     params = {
         "api_key": api_key,
         "language": "de-DE",
-        "append_to_response": "credits",
+        "append_to_response": "credits,videos",
+        "include_video_language": "de-DE,en-US",
     }
     try:
         response = requests.get(api_url, params=params, timeout=20)
@@ -174,11 +175,30 @@ def fetch_tmdb_details(tmdb_id: int) -> dict:
     payload = response.json()
     cast_entries = payload.get("credits", {}).get("cast", [])
     cast_names = [member.get("name") for member in cast_entries if member.get("name")]
+
+    trailer_payload = {}
+    for video in payload.get("videos", {}).get("results", []):
+        if not video.get("key") or not video.get("site"):
+            continue
+        if video.get("site") != "YouTube":
+            continue
+        video_type = (video.get("type") or "").lower()
+        if video_type in {"trailer", "teaser"}:
+            trailer_payload = {
+                "site": video.get("site"),
+                "key": video.get("key"),
+                "name": video.get("name"),
+                "official": video.get("official", False),
+            }
+            if video_type == "trailer":
+                break
+
     return {
         "runtime": payload.get("runtime"),
         "genres": [genre.get("name") for genre in payload.get("genres", []) if genre.get("name")],
         "tagline": payload.get("tagline"),
         "cast": cast_names[:10],
+        "trailer": trailer_payload,
     }
 
 
@@ -474,6 +494,7 @@ def api_movie_detail(movie_id: int):
         "tagline": tmdb_details.get("tagline"),
         "cast": tmdb_details.get("cast", []),
         "streaming_links": [link.to_dict() for link in movie.streaming_links],
+        "trailer": tmdb_details.get("trailer"),
     }
 
     return jsonify({"success": True, "movie": movie_payload})
