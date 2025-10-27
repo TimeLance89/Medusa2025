@@ -22,6 +22,7 @@
                 <a href="#" class="menu-item">Filme</a>
                 <a href="#" class="menu-item">Serien</a>
                 <a href="#" class="menu-item">Scraper</a>
+                <a href="#settings" class="menu-item">Einstellungen</a>
             </nav>
             <div class="sidebar-footer">
                 <button id="syncTmdb" class="btn btn-primary">TMDB aktualisieren</button>
@@ -60,6 +61,35 @@
                 </div>
             </section>
             {% endfor %}
+
+            <section class="settings-panel" id="settings">
+                <div class="section-header">
+                    <h3>Einstellungen</h3>
+                    <span class="pill">Verwaltung</span>
+                </div>
+                <form id="settingsForm" class="settings-form">
+                    <div class="form-grid">
+                        <label class="form-field">
+                            <span class="form-label">TMDB API Key</span>
+                            <input type="text" name="tmdb_api_key" placeholder="z.B. 123abc" required />
+                            <span class="form-hint">Wird für die Synchronisation von TMDB benötigt.</span>
+                        </label>
+                        <label class="form-field">
+                            <span class="form-label">Kinox Startseite</span>
+                            <input type="number" min="1" name="kinox_start_page" />
+                            <span class="form-hint">Erste Seite für den Scraper.</span>
+                        </label>
+                        <label class="form-field">
+                            <span class="form-label">Kinox Endseite</span>
+                            <input type="number" min="1" name="kinox_end_page" />
+                            <span class="form-hint">Letzte Seite für den Scraper.</span>
+                        </label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Einstellungen speichern</button>
+                    </div>
+                </form>
+            </section>
 
             <section class="scraper-panel">
                 <div class="section-header">

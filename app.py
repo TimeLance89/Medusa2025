@@ -15,7 +15,7 @@ from scrapers.kinox import scrape_page as scrape_kinox_page
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DEFAULT_DB_PATH = os.path.join(BASE_DIR, "database", "mediahub.db")
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
+_ENV_TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
@@ -79,6 +79,48 @@ class StreamingLink(db.Model):
         }
 
 
+class Setting(db.Model):
+    __tablename__ = "settings"
+
+    key = db.Column(db.String(64), primary_key=True)
+    value = db.Column(db.String(255), nullable=False)
+
+
+def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    setting = Setting.query.filter_by(key=key).first()
+    if setting is None:
+        return default
+    return setting.value
+
+
+def set_setting(key: str, value: str) -> Setting:
+    setting = Setting.query.filter_by(key=key).first()
+    if setting is None:
+        setting = Setting(key=key, value=value)
+    else:
+        setting.value = value
+    db.session.add(setting)
+    db.session.commit()
+    return setting
+
+
+def get_tmdb_api_key() -> str:
+    stored = get_setting("tmdb_api_key")
+    if stored:
+        return stored
+    return _ENV_TMDB_API_KEY
+
+
+def get_int_setting(key: str, default: int) -> int:
+    value = get_setting(key)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
 def ensure_database() -> None:
     """Create the database schema when the app starts."""
     with app.app_context():
@@ -96,13 +138,14 @@ def ensure_database() -> None:
 
 def fetch_tmdb_movies(category: str = "popular", page: int = 1) -> List[dict]:
     """Fetch movies from the TMDB API and return the JSON payload."""
-    if not TMDB_API_KEY:
+    api_key = get_tmdb_api_key()
+    if not api_key:
         raise RuntimeError(
-            "TMDB_API_KEY is not set. Please provide a valid key as an environment variable."
+            "TMDB_API_KEY is not set. Please provide a valid key in the settings area or as an environment variable."
         )
 
     api_url = f"https://api.themoviedb.org/3/movie/{category}"
-    params = {"api_key": TMDB_API_KEY, "language": "de-DE", "page": page}
+    params = {"api_key": api_key, "language": "de-DE", "page": page}
     response = requests.get(api_url, params=params, timeout=20)
     response.raise_for_status()
     payload = response.json()
@@ -177,8 +220,17 @@ def api_movies():
 @app.route("/api/scrape/kinox", methods=["POST"])
 def api_scrape_kinox():
     data = request.get_json(silent=True) or {}
-    start_page = int(data.get("start_page", 1))
-    end_page = int(data.get("end_page", start_page))
+    start_page = int(
+        data.get("start_page")
+        or get_int_setting("kinox_start_page", 1)
+    )
+    end_page = int(
+        data.get("end_page")
+        or get_int_setting("kinox_end_page", start_page)
+    )
+
+    if end_page < start_page:
+        start_page, end_page = end_page, start_page
 
     collected: List[dict] = []
     for page in range(start_page, end_page + 1):
@@ -195,6 +247,48 @@ def api_tmdb(category: str):
     tmdb_movies = fetch_tmdb_movies(category=category, page=page)
     movies = upsert_movies(tmdb_movies)
     return jsonify({"success": True, "count": len(movies)})
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    if request.method == "GET":
+        return jsonify(
+            {
+                "tmdb_api_key": get_tmdb_api_key(),
+                "kinox_start_page": get_int_setting("kinox_start_page", 1),
+                "kinox_end_page": get_int_setting("kinox_end_page", 1),
+            }
+        )
+
+    data = request.get_json(silent=True) or {}
+
+    response_payload = {}
+    errors = {}
+
+    tmdb_api_key = (data.get("tmdb_api_key") or "").strip()
+    if tmdb_api_key:
+        set_setting("tmdb_api_key", tmdb_api_key)
+        response_payload["tmdb_api_key"] = tmdb_api_key
+    elif data.get("tmdb_api_key") is not None:
+        errors["tmdb_api_key"] = "TMDB API Key darf nicht leer sein."
+
+    for key in ("kinox_start_page", "kinox_end_page"):
+        if key in data:
+            try:
+                value = int(data[key])
+            except (TypeError, ValueError):
+                errors[key] = "Ungültige Zahl."
+                continue
+            if value < 1:
+                errors[key] = "Wert muss größer oder gleich 1 sein."
+                continue
+            set_setting(key, str(value))
+            response_payload[key] = value
+
+    if errors:
+        return jsonify({"success": False, "errors": errors}), 400
+
+    return jsonify({"success": True, "settings": response_payload})
 
 
 ensure_database()
