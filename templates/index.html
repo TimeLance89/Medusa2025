@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Medusa Media Server</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🜁</span>
+                <div>
+                    <h1>Medusa</h1>
+                    <p class="subtitle">Media Server</p>
+                </div>
+            </div>
+            <nav class="menu">
+                <a href="#" class="menu-item active">Startseite</a>
+                <a href="#" class="menu-item">Filme</a>
+                <a href="#" class="menu-item">Serien</a>
+                <a href="#" class="menu-item">Scraper</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="syncTmdb" class="btn btn-primary">TMDB aktualisieren</button>
+                <button id="scrapeKinox" class="btn btn-secondary">Kinox scrapen</button>
+            </div>
+        </aside>
+        <main class="content">
+            <header class="hero" id="hero">
+                <div class="hero-content">
+                    <h2>Entdecke deine Mediathek</h2>
+                    <p>Medusa kombiniert die Eleganz von Plex mit der Dynamik von Netflix. Synchronisiere Inhalte von TMDB und erweitere deine Sammlung mit externen Quellen.</p>
+                    <div class="hero-actions">
+                        <button class="btn btn-primary" id="refreshHero">Zufälliger Film</button>
+                        <button class="btn btn-secondary">Wiedergabeliste</button>
+                    </div>
+                </div>
+            </header>
+
+            {% for name, movies in categories.items() %}
+            <section class="carousel">
+                <div class="section-header">
+                    <h3>{{ name }}</h3>
+                    <a href="#" class="section-link">Alle anzeigen</a>
+                </div>
+                <div class="carousel-track">
+                    {% for movie in movies %}
+                    <article class="card" data-title="{{ movie.title }}">
+                        <div class="card-poster" style="background-image: url('{{ movie.poster_path and "https://image.tmdb.org/t/p/w500" + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') }}');"></div>
+                        <div class="card-overlay">
+                            <h4>{{ movie.title }}</h4>
+                            <p>{{ movie.release_date or 'Unbekannt' }}</p>
+                            <span class="rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endfor %}
+
+            <section class="scraper-panel">
+                <div class="section-header">
+                    <h3>Scraper Links</h3>
+                    <span class="pill">Kinox.farm</span>
+                </div>
+                <div class="scraper-grid">
+                    {% for link in scraped %}
+                    <div class="scraper-card">
+                        <div>
+                            <h4>{{ link.movie.title }}</h4>
+                            <p>{{ link.source_name }} · {{ link.mirror_info or 'Mirror' }}</p>
+                        </div>
+                        <a class="btn btn-ghost" href="{{ link.url }}" target="_blank" rel="noopener">Stream öffnen</a>
+                    </div>
+                    {% else %}
+                    <p class="empty">Noch keine gescrapten Links vorhanden.</p>
+                    {% endfor %}
+                </div>
+            </section>
+        </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+</body>
+</html>
