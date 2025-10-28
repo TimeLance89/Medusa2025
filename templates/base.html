@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}{{ page_title or 'Medusa – Media Server' }}{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+</head>
+<body data-current-page="{{ active_page|default('start') }}" data-initial-section="{{ active_page|default('start') }}">
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🜁</span>
+                <div class="logo-text">
+                    <h1>Medusa</h1>
+                    <p class="subtitle">Media Server</p>
+                </div>
+            </div>
+            <nav class="menu">
+                <a href="{{ url_for('index') }}" class="menu-item{% if active_page == 'start' %} active{% endif %}" data-section-link="start" data-navigation="route">Start</a>
+                <a href="{{ url_for('filme') }}" class="menu-item{% if active_page == 'filme' %} active{% endif %}" data-section-link="filme" data-navigation="route">Filme</a>
+                <a href="{{ url_for('serien') }}" class="menu-item{% if active_page == 'serien' %} active{% endif %}" data-section-link="serien" data-navigation="route">Serien</a>
+                <a href="{{ url_for('scraper_view') }}" class="menu-item{% if active_page == 'scraper' %} active{% endif %}" data-section-link="scraper" data-navigation="route">Scraper</a>
+                <a href="{{ url_for('settings_view') }}" class="menu-item{% if active_page == 'settings' %} active{% endif %}" data-section-link="settings" data-navigation="route">Einstellungen</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="syncTmdb" class="btn btn-primary" type="button">TMDB synchronisieren</button>
+                <button id="scrapeKinox" class="btn btn-secondary" type="button">Kinox scrapen</button>
+            </div>
+        </aside>
+        <main class="content">
+            {% block preface %}{% endblock %}
+            {% block main %}{% endblock %}
+        </main>
+    </div>
+
+    {% if show_detail_panel %}
+        {% include 'partials/detail_panel.html' %}
+        {% include 'partials/trailer_modal.html' %}
+    {% endif %}
+
+    <div class="toast" id="toast"></div>
+    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+</body>
+</html>
