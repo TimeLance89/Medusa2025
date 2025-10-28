@@ -138,18 +138,21 @@ async function resetScrapedContent() {
 }
 
 function initNavigation() {
-  const menuItems = Array.from(document.querySelectorAll('.menu-item[data-target]'));
+  const menuItems = Array.from(document.querySelectorAll('[data-section-link]'));
   const panels = Array.from(document.querySelectorAll('[data-section]'));
+  const initialSection = document.body?.dataset?.initialSection || 'start';
 
-  function setSection(name) {
+  function setSection(name, { scroll = true } = {}) {
     panels.forEach((panel) => {
       const isActive = panel.dataset.section === name;
       panel.classList.toggle('active', isActive);
     });
     menuItems.forEach((item) => {
-      item.classList.toggle('active', item.dataset.target === name);
+      item.classList.toggle('active', item.dataset.sectionLink === name);
     });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (scroll) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     currentSectionName = name;
     document.body.classList.toggle('showing-detail', name === 'detail');
     if (name === 'detail' && detailPanel) {
@@ -160,30 +163,23 @@ function initNavigation() {
     }
   }
 
-  changeSection = setSection;
+  changeSection = (name) => setSection(name);
 
   menuItems.forEach((item) => {
+    if (item.dataset.navigation === 'route') {
+      return;
+    }
     item.addEventListener('click', (event) => {
       event.preventDefault();
-      const target = item.dataset.target;
+      const target = item.dataset.sectionLink;
       if (target) {
         setSection(target);
       }
     });
   });
 
-  document.querySelectorAll('[data-target]').forEach((element) => {
-    if (element.classList.contains('menu-item')) return;
-    element.addEventListener('click', (event) => {
-      event.preventDefault();
-      const target = element.dataset.target;
-      if (target) {
-        setSection(target);
-      }
-    });
-  });
-
-  setSection('start');
+  setSection(initialSection, { scroll: false });
+  previousSectionName = initialSection;
 }
 
 function initHero() {
@@ -918,3 +914,6 @@ initNavigation();
 bindContentCards();
 initHero();
 loadSettings();
+if (document.body?.dataset?.loadAllMovies === 'true') {
+  ensureAllMoviesLoaded();
+}

@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
 </head>
-<body>
+<body data-initial-section="{{ active_section|default('start') }}" data-load-all-movies="{{ 'true' if film_view == 'all' else 'false' }}">
     <div class="app-shell">
         <aside class="sidebar">
             <div class="logo">
@@ -18,11 +18,11 @@
                 </div>
             </div>
             <nav class="menu">
-                <a href="#" class="menu-item active" data-target="start">Startseite</a>
-                <a href="#" class="menu-item" data-target="filme">Filme</a>
-                <a href="#" class="menu-item" data-target="serien">Serien</a>
-                <a href="#" class="menu-item" data-target="scraper">Scraper</a>
-                <a href="#" class="menu-item" data-target="settings">Einstellungen</a>
+                <a href="{{ url_for('index') }}" class="menu-item{% if active_section == 'start' %} active{% endif %}" data-section-link="start" data-navigation="route">Startseite</a>
+                <a href="{{ url_for('filme') }}" class="menu-item{% if active_section == 'filme' %} active{% endif %}" data-section-link="filme" data-navigation="route">Filme</a>
+                <a href="{{ url_for('serien') }}" class="menu-item{% if active_section == 'serien' %} active{% endif %}" data-section-link="serien" data-navigation="route">Serien</a>
+                <a href="{{ url_for('scraper_view') }}" class="menu-item{% if active_section == 'scraper' %} active{% endif %}" data-section-link="scraper" data-navigation="route">Scraper</a>
+                <a href="{{ url_for('settings_view') }}" class="menu-item{% if active_section == 'settings' %} active{% endif %}" data-section-link="settings" data-navigation="route">Einstellungen</a>
             </nav>
             <div class="sidebar-footer">
                 <button id="syncTmdb" class="btn btn-primary">TMDB aktualisieren</button>
@@ -30,14 +30,14 @@
             </div>
         </aside>
         <main class="content">
-            <section class="panel active" data-section="start">
+            <section class="panel{% if active_section == 'start' %} active{% endif %}" data-section="start">
                 <header class="hero" id="hero">
                     <div class="hero-content">
                         <h2>Entdecke deine Mediathek</h2>
                         <p>Medusa kombiniert die Eleganz von Plex mit der Dynamik von Netflix. Synchronisiere Inhalte von TMDB und erweitere deine Sammlung mit externen Quellen.</p>
                         <div class="hero-actions">
                             <button class="btn btn-primary" id="refreshHero">Zufälliger Film</button>
-                            <button class="btn btn-secondary" data-target="filme">Zu den Filmen</button>
+                            <a class="btn btn-secondary" href="{{ url_for('filme') }}">Zu den Filmen</a>
                         </div>
                     </div>
                 </header>
@@ -75,11 +75,17 @@
                 {% endfor %}
             </section>
 
-            <section class="panel" data-section="filme">
+            <section class="panel{% if active_section == 'filme' %} active{% endif %}" data-section="filme">
                 <div class="panel-header">
                     <div>
                         <h2>Filme</h2>
                         <p class="panel-subtitle">Alle Filme deiner Bibliothek, übersichtlich strukturiert wie bei Netflix.</p>
+                    </div>
+                    <div class="panel-actions">
+                        {% if film_view == 'all' %}
+                        <a href="{{ url_for('filme') }}" class="btn btn-ghost" data-navigation="route">Übersicht</a>
+                        {% endif %}
+                        <a href="{{ url_for('filme_all') }}" class="btn btn-secondary" data-navigation="route">Alle Filme</a>
                     </div>
                 </div>
                 {% if film_sections %}
@@ -118,9 +124,26 @@
                 {% else %}
                     <p class="empty large">Noch keine Filme vorhanden. Synchronisiere zuerst Inhalte.</p>
                 {% endif %}
+                {% if film_view == 'all' %}
+                <section class="detail-section detail-all-movies">
+                    <div class="detail-section-head">
+                        <h3>Alle Filme</h3>
+                        <div class="detail-pagination">
+                            <button type="button" id="detailAllPrev" class="detail-page-btn" aria-label="Vorherige Seite">
+                                ‹
+                            </button>
+                            <span id="detailAllPageLabel" class="detail-page-label"></span>
+                            <button type="button" id="detailAllNext" class="detail-page-btn" aria-label="Nächste Seite">
+                                ›
+                            </button>
+                        </div>
+                    </div>
+                    <div id="detailAllMovies" class="detail-all-grid"></div>
+                </section>
+                {% endif %}
             </section>
 
-            <section class="panel" data-section="serien">
+            <section class="panel{% if active_section == 'serien' %} active{% endif %}" data-section="serien">
                 <div class="panel-header">
                     <div>
                         <h2>Serien</h2>
@@ -165,7 +188,7 @@
                 {% endif %}
             </section>
 
-            <section class="panel" data-section="scraper">
+            <section class="panel{% if active_section == 'scraper' %} active{% endif %}" data-section="scraper">
                 <div class="panel-header">
                     <div>
                         <h2>Scraper</h2>
@@ -187,7 +210,7 @@
                 </div>
             </section>
 
-            <section class="panel" data-section="settings" id="settings">
+            <section class="panel{% if active_section == 'settings' %} active{% endif %}" data-section="settings" id="settings">
                 <div class="panel-header">
                     <div>
                         <h2>Einstellungen</h2>
@@ -295,21 +318,6 @@
                         </section>
                     </aside>
                 </div>
-                <section class="detail-section detail-all-movies">
-                    <div class="detail-section-head">
-                        <h3>Alle Filme</h3>
-                        <div class="detail-pagination">
-                            <button type="button" id="detailAllPrev" class="detail-page-btn" aria-label="Vorherige Seite">
-                                ‹
-                            </button>
-                            <span id="detailAllPageLabel" class="detail-page-label"></span>
-                            <button type="button" id="detailAllNext" class="detail-page-btn" aria-label="Nächste Seite">
-                                ›
-                            </button>
-                        </div>
-                    </div>
-                    <div id="detailAllMovies" class="detail-all-grid"></div>
-                </section>
             </div>
         </div>
     </section>
