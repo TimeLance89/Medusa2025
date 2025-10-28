@@ -52,6 +52,14 @@
                 <form class="topbar-search" role="search">
                     <span class="material-symbols-outlined" aria-hidden="true">search</span>
                     <input type="search" name="q" placeholder="Bibliothek oder TMDB durchsuchen" autocomplete="off" />
+                    <div
+                        class="topbar-search__results"
+                        id="topbarSearchResults"
+                        aria-hidden="true"
+                        data-poster-placeholder="{{ url_for('static', filename='images/poster-placeholder.svg') }}"
+                    >
+                        <ul class="topbar-search__list" id="topbarSearchList" role="listbox"></ul>
+                    </div>
                 </form>
                 <button id="syncTmdb" class="icon-button" type="button" title="TMDB synchronisieren">
                     <span class="material-symbols-outlined" aria-hidden="true">sync</span>

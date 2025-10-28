@@ -28,6 +28,10 @@ const heroSection = document.getElementById('hero');
 const heroPosterImage = heroSection?.querySelector('.hero__poster-image');
 const heroPlayButton = document.getElementById('detailHeroPlay');
 const topbarScrapeButton = document.getElementById('scrapeKinox');
+const topbarSearchForm = document.querySelector('.topbar-search');
+const topbarSearchInput = topbarSearchForm?.querySelector('input[name="q"]');
+const topbarSearchResults = document.getElementById('topbarSearchResults');
+const topbarSearchList = document.getElementById('topbarSearchList');
 const scraperStatusPanel = document.getElementById('scraperStatusPanel');
 const scraperStatusMessage = document.getElementById('scraperStatusMessage');
 const scraperStatusState = document.getElementById('scraperStatusState');
@@ -61,6 +65,10 @@ let allMoviesLoaded = false;
 let allMoviesLoading = false;
 let currentScraperStatus = null;
 let scraperStatusTimeout = null;
+let searchAbortController = null;
+let searchDebounceTimeout = null;
+let currentSearchResults = [];
+let searchHighlightedIndex = -1;
 
 function showToast(message, variant = 'info') {
   toast.textContent = message;
@@ -100,10 +108,404 @@ async function callApi(url, options = {}) {
     }
     return await response.json();
   } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw error;
+    }
     console.error(error);
     showToast(error.message, 'error');
     throw error;
   }
+}
+
+function resetSearchHighlight() {
+  searchHighlightedIndex = -1;
+  if (topbarSearchInput) {
+    topbarSearchInput.removeAttribute('aria-activedescendant');
+  }
+  if (!topbarSearchList) {
+    return;
+  }
+  topbarSearchList.querySelectorAll('.topbar-search__result').forEach((button) => {
+    button.classList.remove('is-active');
+  });
+}
+
+function clearSearchResults() {
+  if (topbarSearchList) {
+    topbarSearchList.innerHTML = '';
+  }
+  currentSearchResults = [];
+  resetSearchHighlight();
+}
+
+function setSearchResultsVisible(visible) {
+  if (!topbarSearchResults || !topbarSearchInput) {
+    return;
+  }
+  if (visible) {
+    topbarSearchResults.hidden = false;
+    topbarSearchResults.setAttribute('aria-hidden', 'false');
+    topbarSearchInput.setAttribute('aria-expanded', 'true');
+  } else {
+    topbarSearchResults.hidden = true;
+    topbarSearchResults.setAttribute('aria-hidden', 'true');
+    topbarSearchInput.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function hideSearchResults({ clear = false } = {}) {
+  setSearchResultsVisible(false);
+  if (clear) {
+    clearSearchResults();
+  } else {
+    resetSearchHighlight();
+  }
+}
+
+function renderSearchMessage(message) {
+  if (!topbarSearchList) {
+    return;
+  }
+  topbarSearchList.innerHTML = '';
+  const item = document.createElement('li');
+  item.className = 'topbar-search__item topbar-search__item--empty';
+  item.textContent = message;
+  topbarSearchList.appendChild(item);
+  currentSearchResults = [];
+  resetSearchHighlight();
+}
+
+function applySearchHighlight(index) {
+  if (!topbarSearchList) {
+    return;
+  }
+  const buttons = Array.from(topbarSearchList.querySelectorAll('.topbar-search__result'));
+  if (!buttons.length) {
+    resetSearchHighlight();
+    return;
+  }
+  if (index == null || index < 0) {
+    buttons.forEach((button) => button.classList.remove('is-active'));
+    resetSearchHighlight();
+    return;
+  }
+  const targetIndex = Math.max(0, Math.min(index, buttons.length - 1));
+  buttons.forEach((button, buttonIndex) => {
+    if (buttonIndex === targetIndex) {
+      button.classList.add('is-active');
+      if (!button.id) {
+        button.id = `search-result-${buttonIndex}`;
+      }
+      if (topbarSearchInput) {
+        topbarSearchInput.setAttribute('aria-activedescendant', button.id);
+      }
+      button.scrollIntoView({ block: 'nearest' });
+    } else {
+      button.classList.remove('is-active');
+    }
+  });
+  searchHighlightedIndex = targetIndex;
+}
+
+function renderSearchResults(results) {
+  if (!topbarSearchList) {
+    return;
+  }
+  topbarSearchList.innerHTML = '';
+  currentSearchResults = Array.isArray(results) ? results : [];
+  resetSearchHighlight();
+
+  if (!currentSearchResults.length) {
+    renderSearchMessage('Keine Ergebnisse.');
+    return;
+  }
+
+  currentSearchResults.forEach((movie, index) => {
+    const item = document.createElement('li');
+    item.className = 'topbar-search__item';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'topbar-search__result';
+    button.dataset.index = String(index);
+    button.dataset.movieId = movie.id != null ? String(movie.id) : '';
+
+    const thumb = document.createElement('div');
+    thumb.className = 'topbar-search__thumb';
+    const posterFallback =
+      detailPoster?.dataset?.placeholder ||
+      topbarSearchResults?.dataset?.posterPlaceholder ||
+      '';
+    const posterUrl = getMoviePosterUrl(movie) || posterFallback;
+    if (posterUrl) {
+      thumb.style.backgroundImage = `url('${posterUrl}')`;
+    }
+    button.appendChild(thumb);
+
+    const body = document.createElement('div');
+    body.className = 'topbar-search__body';
+
+    const title = document.createElement('div');
+    title.className = 'topbar-search__title';
+    title.textContent = movie.title || 'Unbekannter Titel';
+    body.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'topbar-search__meta';
+    const releaseYear = typeof movie.release_date === 'string' && movie.release_date ? movie.release_date.slice(0, 4) : '';
+    if (releaseYear) {
+      const year = document.createElement('span');
+      year.textContent = releaseYear;
+      meta.appendChild(year);
+    }
+    const ratingValue = Number(movie.rating);
+    if (Number.isFinite(ratingValue) && ratingValue > 0) {
+      const rating = document.createElement('span');
+      rating.textContent = `⭐ ${ratingValue.toFixed(1)}`;
+      meta.appendChild(rating);
+    }
+    if (typeof movie.streams === 'number' && movie.streams > 0) {
+      const streams = document.createElement('span');
+      streams.textContent = movie.streams === 1 ? '1 Stream' : `${movie.streams} Streams`;
+      meta.appendChild(streams);
+    }
+    if (meta.childElementCount) {
+      body.appendChild(meta);
+    }
+
+    const overview = document.createElement('div');
+    overview.className = 'topbar-search__overview';
+    const overviewText = typeof movie.overview === 'string' && movie.overview.trim() ? movie.overview.trim() : 'Keine Beschreibung verfügbar.';
+    overview.textContent = overviewText.length > 140 ? `${overviewText.slice(0, 137)}…` : overviewText;
+    body.appendChild(overview);
+
+    button.appendChild(body);
+
+    button.addEventListener('click', () => {
+      const resultIndex = Number(button.dataset.index);
+      openSearchResult(Number.isFinite(resultIndex) ? resultIndex : index);
+    });
+    button.addEventListener('mouseenter', () => {
+      applySearchHighlight(index);
+    });
+
+    item.appendChild(button);
+    topbarSearchList.appendChild(item);
+  });
+}
+
+function moveSearchHighlight(offset) {
+  if (!currentSearchResults.length) {
+    return;
+  }
+  let nextIndex = searchHighlightedIndex;
+  if (nextIndex < 0) {
+    nextIndex = offset > 0 ? 0 : currentSearchResults.length - 1;
+  } else {
+    nextIndex = (nextIndex + offset + currentSearchResults.length) % currentSearchResults.length;
+  }
+  applySearchHighlight(nextIndex);
+}
+
+function openSearchResult(index) {
+  if (!currentSearchResults.length) {
+    return;
+  }
+  const boundedIndex = Math.max(0, Math.min(index, currentSearchResults.length - 1));
+  const movie = currentSearchResults[boundedIndex];
+  if (!movie || movie.id == null) {
+    return;
+  }
+  hideSearchResults({ clear: true });
+  if (topbarSearchInput) {
+    topbarSearchInput.value = '';
+    topbarSearchInput.blur();
+  }
+  openMovieDetail(movie.id);
+}
+
+async function performSearch(query) {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    return;
+  }
+
+  if (searchAbortController) {
+    searchAbortController.abort();
+  }
+  const controller = new AbortController();
+  searchAbortController = controller;
+
+  try {
+    const response = await callApi(`/api/search?q=${encodeURIComponent(trimmed)}`, {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) {
+      return;
+    }
+    if (!response?.success) {
+      renderSearchMessage('Suche fehlgeschlagen.');
+      setSearchResultsVisible(true);
+      return;
+    }
+    const results = Array.isArray(response.results) ? response.results : [];
+    if (!results.length) {
+      renderSearchMessage(`Keine Ergebnisse für „${trimmed}“.`);
+      setSearchResultsVisible(true);
+      return;
+    }
+    renderSearchResults(results);
+    setSearchResultsVisible(true);
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      return;
+    }
+    renderSearchMessage('Suche fehlgeschlagen.');
+    setSearchResultsVisible(true);
+  } finally {
+    if (searchAbortController === controller) {
+      searchAbortController = null;
+    }
+  }
+}
+
+function handleSearchInput(event) {
+  if (!topbarSearchInput) {
+    return;
+  }
+  const value = event.target.value || '';
+
+  if (searchAbortController) {
+    searchAbortController.abort();
+    searchAbortController = null;
+  }
+  if (searchDebounceTimeout) {
+    clearTimeout(searchDebounceTimeout);
+    searchDebounceTimeout = null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    hideSearchResults({ clear: true });
+    return;
+  }
+  if (trimmed.length < 2) {
+    renderSearchMessage('Bitte mindestens 2 Zeichen eingeben.');
+    setSearchResultsVisible(true);
+    return;
+  }
+
+  renderSearchMessage('Suche läuft…');
+  setSearchResultsVisible(true);
+  searchDebounceTimeout = window.setTimeout(() => {
+    searchDebounceTimeout = null;
+    performSearch(value);
+  }, 250);
+}
+
+function handleSearchSubmit(event) {
+  if (!topbarSearchInput) {
+    return;
+  }
+  event.preventDefault();
+  const query = topbarSearchInput.value || '';
+  const trimmed = query.trim();
+
+  if (!trimmed) {
+    hideSearchResults({ clear: true });
+    return;
+  }
+
+  if (currentSearchResults.length) {
+    const targetIndex = searchHighlightedIndex >= 0 ? searchHighlightedIndex : 0;
+    openSearchResult(targetIndex);
+    return;
+  }
+
+  if (trimmed.length < 2) {
+    renderSearchMessage('Bitte mindestens 2 Zeichen eingeben.');
+    setSearchResultsVisible(true);
+    return;
+  }
+
+  renderSearchMessage('Suche läuft…');
+  setSearchResultsVisible(true);
+  performSearch(query);
+}
+
+function handleSearchKeydown(event) {
+  if (!topbarSearchInput) {
+    return;
+  }
+  if (event.key === 'ArrowDown') {
+    if (currentSearchResults.length) {
+      event.preventDefault();
+      setSearchResultsVisible(true);
+      moveSearchHighlight(1);
+    }
+  } else if (event.key === 'ArrowUp') {
+    if (currentSearchResults.length) {
+      event.preventDefault();
+      setSearchResultsVisible(true);
+      moveSearchHighlight(-1);
+    }
+  } else if (event.key === 'Enter') {
+    if (currentSearchResults.length) {
+      event.preventDefault();
+      const targetIndex = searchHighlightedIndex >= 0 ? searchHighlightedIndex : 0;
+      openSearchResult(targetIndex);
+    }
+  } else if (event.key === 'Escape') {
+    if (topbarSearchInput.value) {
+      event.preventDefault();
+      hideSearchResults({ clear: true });
+      topbarSearchInput.value = '';
+    } else {
+      hideSearchResults();
+    }
+  }
+}
+
+function initSearch() {
+  if (!topbarSearchForm || !topbarSearchInput) {
+    return;
+  }
+
+  if (topbarSearchResults) {
+    topbarSearchResults.hidden = true;
+    topbarSearchResults.setAttribute('aria-hidden', 'true');
+  }
+
+  topbarSearchInput.setAttribute('role', 'combobox');
+  topbarSearchInput.setAttribute('aria-autocomplete', 'list');
+  if (topbarSearchList?.id) {
+    topbarSearchInput.setAttribute('aria-controls', topbarSearchList.id);
+  }
+  topbarSearchInput.setAttribute('aria-expanded', 'false');
+
+  topbarSearchInput.addEventListener('input', handleSearchInput);
+  topbarSearchInput.addEventListener('keydown', handleSearchKeydown);
+  topbarSearchForm.addEventListener('submit', handleSearchSubmit);
+
+  topbarSearchInput.addEventListener('focus', () => {
+    if (currentSearchResults.length) {
+      setSearchResultsVisible(true);
+    }
+  });
+
+  topbarSearchInput.addEventListener('blur', () => {
+    window.setTimeout(() => {
+      if (!topbarSearchForm.contains(document.activeElement)) {
+        hideSearchResults();
+      }
+    }, 120);
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!topbarSearchForm.contains(event.target)) {
+      hideSearchResults();
+    }
+  });
 }
 
 async function syncTmdb() {
@@ -702,7 +1104,7 @@ function bindContentCards() {
 }
 
 function getMoviePosterUrl(movie) {
-  const placeholder = detailPoster?.dataset.placeholder || '';
+  const placeholder = detailPoster?.dataset?.placeholder || '';
   if (!movie) {
     return placeholder;
   }
@@ -1352,6 +1754,7 @@ function populateDetail(movie) {
   }
 }
 
+initSearch();
 bindButtons();
 initNavigation();
 bindContentCards();

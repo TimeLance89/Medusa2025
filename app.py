@@ -9,7 +9,7 @@ from typing import List, Optional, Set, Tuple
 import requests
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.engine import make_url
 
 from scrapers.kinox import scrape_page as scrape_kinox_page
@@ -805,6 +805,73 @@ def api_movies():
         .all()
     )
     return jsonify([movie.to_dict() for movie in movies])
+
+
+def _escape_search_query(raw_query: str) -> str:
+    """Escape SQL wildcard characters in user provided search strings."""
+
+    return (
+        raw_query.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        .strip()
+    )
+
+
+@app.route("/api/search")
+def api_search():
+    raw_query = (request.args.get("q") or "").strip()
+    if len(raw_query) < 2:
+        return jsonify({"success": True, "query": raw_query, "results": []})
+
+    safe_query = _escape_search_query(raw_query)
+    like_pattern = f"%{safe_query}%"
+
+    valid_filter = movie_has_valid_streaming_link()
+
+    movies = (
+        Movie.query.filter(valid_filter)
+        .filter(
+            or_(
+                Movie.title.ilike(like_pattern, escape="\\"),
+                Movie.overview.ilike(like_pattern, escape="\\"),
+                Movie.release_date.ilike(like_pattern, escape="\\"),
+                Movie.streaming_links.any(
+                    StreamingLink.source_name.ilike(like_pattern, escape="\\")
+                ),
+                Movie.streaming_links.any(
+                    StreamingLink.url.ilike(like_pattern, escape="\\")
+                ),
+            )
+        )
+        .order_by(
+            Movie.rating.desc().nullslast(),
+            Movie.created_at.desc().nullslast(),
+            Movie.title.asc(),
+        )
+        .limit(20)
+        .all()
+    )
+
+    results = []
+    for movie in movies:
+        poster_url = build_tmdb_image(movie.poster_path)
+        backdrop_url = build_tmdb_image(movie.backdrop_path, "w780")
+        streams = [link for link in movie.streaming_links if (link.url or "").strip()]
+        results.append(
+            {
+                "id": movie.id,
+                "title": movie.title,
+                "overview": movie.overview,
+                "release_date": movie.release_date,
+                "rating": movie.rating,
+                "poster_url": poster_url,
+                "backdrop_url": backdrop_url,
+                "streams": len(streams),
+            }
+        )
+
+    return jsonify({"success": True, "query": raw_query, "results": results})
 
 
 @app.route("/api/movies/<int:movie_id>")
