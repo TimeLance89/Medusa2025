@@ -1,7 +1,7 @@
 """Utilities to scrape kinox.farm movie listings."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 from urllib.parse import urljoin
 
 import requests
@@ -13,7 +13,10 @@ SELECTOR_TITLE = "div.short-entry-title a"
 SELECTOR_MIRROR = "li.MirBtn.MirBtnA.MirBaseStyleflv"
 
 
-def scrape_page(page: int) -> List[dict]:
+ProgressCallback = Optional[Callable[[dict], None]]
+
+
+def scrape_page(page: int, progress_callback: ProgressCallback = None) -> List[dict]:
     """Scrape a kinox listing page for movie titles and streaming links."""
     url = BASE_URL.format(page=page)
     response = requests.get(url, timeout=20)
@@ -27,14 +30,19 @@ def scrape_page(page: int) -> List[dict]:
         detail_url = urljoin(url, href) if href else None
         stream_data = scrape_detail(detail_url) if detail_url else None
         if title and stream_data:
-            results.append(
-                {
-                    "title": title,
-                    "streaming_url": stream_data["url"],
-                    "detail_url": detail_url,
-                    "mirror": stream_data.get("mirror_info"),
-                }
-            )
+            result = {
+                "title": title,
+                "streaming_url": stream_data["url"],
+                "detail_url": detail_url,
+                "mirror": stream_data.get("mirror_info"),
+            }
+            if progress_callback:
+                try:
+                    progress_callback(result)
+                except Exception:
+                    # Progress updates must never break scraping.
+                    pass
+            results.append(result)
     return results
 
 
