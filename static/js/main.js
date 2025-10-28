@@ -32,6 +32,12 @@ const topbarSearchForm = document.querySelector('.topbar-search');
 const topbarSearchInput = topbarSearchForm?.querySelector('input[name="q"]');
 const topbarSearchResults = document.getElementById('topbarSearchResults');
 const topbarSearchList = document.getElementById('topbarSearchList');
+const searchOverlay = document.getElementById('searchOverlay');
+const searchOverlayTitle = document.getElementById('searchOverlayTitle');
+const searchOverlayMeta = document.getElementById('searchOverlayMeta');
+const searchOverlayList = document.getElementById('searchOverlayList');
+const searchOverlayEmpty = document.getElementById('searchOverlayEmpty');
+const searchOverlayClose = document.getElementById('searchOverlayClose');
 const scraperStatusPanel = document.getElementById('scraperStatusPanel');
 const scraperStatusMessage = document.getElementById('scraperStatusMessage');
 const scraperStatusState = document.getElementById('scraperStatusState');
@@ -68,6 +74,7 @@ let scraperStatusTimeout = null;
 let searchAbortController = null;
 let searchDebounceTimeout = null;
 let currentSearchResults = [];
+let currentSearchQuery = '';
 let searchHighlightedIndex = -1;
 
 function showToast(message, variant = 'info') {
@@ -294,6 +301,152 @@ function renderSearchResults(results) {
   });
 }
 
+function renderSearchOverlayResults(results) {
+  if (!searchOverlayList) {
+    return;
+  }
+  searchOverlayList.innerHTML = '';
+  if (!Array.isArray(results) || !results.length) {
+    searchOverlayList.setAttribute('hidden', 'true');
+    return;
+  }
+  searchOverlayList.removeAttribute('hidden');
+
+  results.forEach((movie) => {
+    if (!movie || movie.id == null) {
+      return;
+    }
+    const card = document.createElement('article');
+    card.className = 'media-card media-card--grid';
+    card.dataset.movieId = String(movie.id);
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+
+    const poster = document.createElement('div');
+    poster.className = 'media-card__poster';
+    const posterUrl = getMoviePosterUrl(movie);
+    if (posterUrl) {
+      poster.style.backgroundImage = `url('${posterUrl}')`;
+    }
+    card.appendChild(poster);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'media-card__overlay';
+
+    const title = document.createElement('h3');
+    title.className = 'media-card__title';
+    title.textContent = movie.title || 'Unbekannter Titel';
+    overlay.appendChild(title);
+
+    const meta = document.createElement('p');
+    meta.className = 'media-card__meta';
+    const releaseYear =
+      typeof movie.release_date === 'string' && movie.release_date ? movie.release_date.slice(0, 4) : '';
+    meta.textContent = releaseYear || 'Keine Angaben';
+    overlay.appendChild(meta);
+
+    const ratingValue = Number(movie.rating);
+    if (Number.isFinite(ratingValue) && ratingValue > 0) {
+      const rating = document.createElement('span');
+      rating.className = 'media-card__rating';
+      rating.textContent = `⭐ ${ratingValue.toFixed(1)}`;
+      overlay.appendChild(rating);
+    }
+
+    if (typeof movie.streams === 'number' && movie.streams > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'media-card__badge';
+      badge.textContent = movie.streams === 1 ? '1 Stream' : `${movie.streams} Streams`;
+      overlay.appendChild(badge);
+    }
+
+    card.appendChild(overlay);
+    searchOverlayList.appendChild(card);
+  });
+
+  bindContentCards();
+}
+
+function isSearchOverlayActive() {
+  return Boolean(searchOverlay?.classList.contains('is-active'));
+}
+
+function hideSearchOverlay() {
+  if (!searchOverlay) {
+    return;
+  }
+  searchOverlay.classList.remove('is-active');
+  searchOverlay.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('showing-search');
+  if (searchOverlayList) {
+    searchOverlayList.innerHTML = '';
+    searchOverlayList.setAttribute('hidden', 'true');
+  }
+  if (searchOverlayEmpty) {
+    searchOverlayEmpty.hidden = true;
+  }
+  if (searchOverlayMeta) {
+    searchOverlayMeta.textContent = '';
+  }
+}
+
+function showSearchOverlay({ query = '', results = [], pending = false, message = '', focusClose = false } = {}) {
+  if (!searchOverlay) {
+    return;
+  }
+
+  const trimmedQuery = typeof query === 'string' ? query.trim() : '';
+  if (searchOverlayTitle) {
+    searchOverlayTitle.textContent = trimmedQuery ? `Ergebnisse für „${trimmedQuery}“` : 'Suchergebnisse';
+  }
+
+  let metaText = '';
+  let emptyText = '';
+
+  if (pending) {
+    metaText = 'Suche läuft…';
+    emptyText = 'Suche läuft…';
+  } else if (message) {
+    metaText = message;
+    emptyText = message;
+  } else if (!results.length) {
+    metaText = 'Keine Ergebnisse gefunden';
+    emptyText = trimmedQuery ? `Keine Ergebnisse für „${trimmedQuery}“.` : 'Keine Ergebnisse gefunden.';
+  } else {
+    metaText = results.length === 1 ? '1 Ergebnis gefunden' : `${results.length} Ergebnisse gefunden`;
+  }
+
+  if (searchOverlayMeta) {
+    searchOverlayMeta.textContent = metaText;
+  }
+
+  if (searchOverlayEmpty) {
+    if (emptyText) {
+      searchOverlayEmpty.textContent = emptyText;
+      searchOverlayEmpty.hidden = false;
+    } else {
+      searchOverlayEmpty.hidden = true;
+    }
+  }
+
+  if (!pending && !message && results.length) {
+    renderSearchOverlayResults(results);
+  } else if (searchOverlayList) {
+    searchOverlayList.innerHTML = '';
+    searchOverlayList.setAttribute('hidden', 'true');
+  }
+
+  searchOverlay.classList.add('is-active');
+  searchOverlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('showing-search');
+  hideSearchResults();
+  if (focusClose && searchOverlayClose) {
+    window.setTimeout(() => {
+      searchOverlayClose.focus();
+    }, 0);
+  }
+}
+
 function moveSearchHighlight(offset) {
   if (!currentSearchResults.length) {
     return;
@@ -321,14 +474,17 @@ function openSearchResult(index) {
     topbarSearchInput.value = '';
     topbarSearchInput.blur();
   }
+  hideSearchOverlay();
   openMovieDetail(movie.id);
 }
 
-async function performSearch(query) {
+async function performSearch(query, { showOverlay = false } = {}) {
   const trimmed = query.trim();
   if (trimmed.length < 2) {
     return;
   }
+
+  currentSearchQuery = trimmed;
 
   if (searchAbortController) {
     searchAbortController.abort();
@@ -346,22 +502,34 @@ async function performSearch(query) {
     if (!response?.success) {
       renderSearchMessage('Suche fehlgeschlagen.');
       setSearchResultsVisible(true);
+      if (showOverlay) {
+        showSearchOverlay({ query: trimmed, message: 'Suche fehlgeschlagen.' });
+      }
       return;
     }
     const results = Array.isArray(response.results) ? response.results : [];
     if (!results.length) {
       renderSearchMessage(`Keine Ergebnisse für „${trimmed}“.`);
       setSearchResultsVisible(true);
+      if (showOverlay) {
+        showSearchOverlay({ query: trimmed, results: [], message: `Keine Ergebnisse für „${trimmed}“.`, focusClose: false });
+      }
       return;
     }
     renderSearchResults(results);
     setSearchResultsVisible(true);
+    if (showOverlay) {
+      showSearchOverlay({ query: trimmed, results, focusClose: false });
+    }
   } catch (error) {
     if (error?.name === 'AbortError') {
       return;
     }
     renderSearchMessage('Suche fehlgeschlagen.');
     setSearchResultsVisible(true);
+    if (showOverlay) {
+      showSearchOverlay({ query: trimmed, message: 'Suche fehlgeschlagen.' });
+    }
   } finally {
     if (searchAbortController === controller) {
       searchAbortController = null;
@@ -375,6 +543,10 @@ function handleSearchInput(event) {
   }
   const value = event.target.value || '';
 
+  if (isSearchOverlayActive()) {
+    hideSearchOverlay();
+  }
+
   if (searchAbortController) {
     searchAbortController.abort();
     searchAbortController = null;
@@ -387,11 +559,13 @@ function handleSearchInput(event) {
   const trimmed = value.trim();
   if (!trimmed) {
     hideSearchResults({ clear: true });
+    hideSearchOverlay();
     return;
   }
   if (trimmed.length < 2) {
     renderSearchMessage('Bitte mindestens 2 Zeichen eingeben.');
     setSearchResultsVisible(true);
+    hideSearchOverlay();
     return;
   }
 
@@ -412,25 +586,29 @@ function handleSearchSubmit(event) {
   const trimmed = query.trim();
 
   if (!trimmed) {
+    hideSearchOverlay();
     hideSearchResults({ clear: true });
-    return;
-  }
-
-  if (currentSearchResults.length) {
-    const targetIndex = searchHighlightedIndex >= 0 ? searchHighlightedIndex : 0;
-    openSearchResult(targetIndex);
     return;
   }
 
   if (trimmed.length < 2) {
     renderSearchMessage('Bitte mindestens 2 Zeichen eingeben.');
     setSearchResultsVisible(true);
+    hideSearchOverlay();
     return;
   }
 
-  renderSearchMessage('Suche läuft…');
-  setSearchResultsVisible(true);
-  performSearch(query);
+  const sameQuery =
+    typeof currentSearchQuery === 'string' && currentSearchQuery.toLowerCase() === trimmed.toLowerCase();
+
+  if (currentSearchResults.length && sameQuery) {
+    showSearchOverlay({ query: trimmed, results: currentSearchResults, focusClose: true });
+    return;
+  }
+
+  clearSearchResults();
+  showSearchOverlay({ query: trimmed, pending: true, focusClose: true });
+  performSearch(query, { showOverlay: true });
 }
 
 function handleSearchKeydown(event) {
@@ -449,13 +627,8 @@ function handleSearchKeydown(event) {
       setSearchResultsVisible(true);
       moveSearchHighlight(-1);
     }
-  } else if (event.key === 'Enter') {
-    if (currentSearchResults.length) {
-      event.preventDefault();
-      const targetIndex = searchHighlightedIndex >= 0 ? searchHighlightedIndex : 0;
-      openSearchResult(targetIndex);
-    }
   } else if (event.key === 'Escape') {
+    hideSearchOverlay();
     if (topbarSearchInput.value) {
       event.preventDefault();
       hideSearchResults({ clear: true });
@@ -1081,6 +1254,7 @@ function bindContentCards() {
       }
       const movieId = element.dataset.movieId;
       if (movieId) {
+        hideSearchOverlay();
         openMovieDetail(movieId);
       }
     };
@@ -1753,6 +1927,28 @@ function populateDetail(movie) {
     }
   }
 }
+
+searchOverlayClose?.addEventListener('click', () => {
+  hideSearchOverlay();
+  if (topbarSearchInput) {
+    topbarSearchInput.focus();
+  }
+});
+
+searchOverlay?.addEventListener('click', (event) => {
+  if (event.target === searchOverlay) {
+    hideSearchOverlay();
+    if (topbarSearchInput) {
+      topbarSearchInput.focus();
+    }
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && isSearchOverlayActive()) {
+    hideSearchOverlay();
+  }
+});
 
 initSearch();
 bindButtons();

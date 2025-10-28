@@ -80,6 +80,37 @@
             {% block preface %}{% endblock %}
             {% block main %}{% endblock %}
         </main>
+
+        <div
+            class="search-overlay"
+            id="searchOverlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="searchOverlayTitle"
+            aria-hidden="true"
+        >
+            <div class="search-overlay__container">
+                <header class="search-overlay__head">
+                    <div>
+                        <span class="chip chip--accent search-overlay__chip">Suche</span>
+                        <h2 id="searchOverlayTitle" class="search-overlay__title">Suchergebnisse</h2>
+                        <p id="searchOverlayMeta" class="search-overlay__meta"></p>
+                    </div>
+                    <button
+                        type="button"
+                        id="searchOverlayClose"
+                        class="icon-button search-overlay__close"
+                        aria-label="Suchergebnisse schließen"
+                    >
+                        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                    </button>
+                </header>
+                <div class="search-overlay__body">
+                    <div id="searchOverlayList" class="media-grid search-overlay__grid" role="list"></div>
+                    <div id="searchOverlayEmpty" class="search-overlay__empty" role="status" hidden></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     {% if show_detail_panel %}
