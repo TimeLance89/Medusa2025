@@ -27,6 +27,19 @@ const watchButtonDefaultLabel = watchButtonLabel?.textContent || 'Ansehen';
 const heroSection = document.getElementById('hero');
 const heroPosterImage = heroSection?.querySelector('.hero__poster-image');
 const heroPlayButton = document.getElementById('detailHeroPlay');
+const topbarScrapeButton = document.getElementById('scrapeKinox');
+const scraperStatusPanel = document.getElementById('scraperStatusPanel');
+const scraperStatusMessage = document.getElementById('scraperStatusMessage');
+const scraperStatusState = document.getElementById('scraperStatusState');
+const scraperStatusProgressBar = document.getElementById('scraperStatusProgressBar');
+const scraperStatusProgressLabel = document.getElementById('scraperStatusProgressLabel');
+const scraperStatusUpdated = document.getElementById('scraperStatusUpdated');
+const scraperStatusPages = document.getElementById('scraperStatusPages');
+const scraperStatusLinks = document.getElementById('scraperStatusLinks');
+const scraperStatusTitle = document.getElementById('scraperStatusTitle');
+const scraperStatusLog = document.getElementById('scraperStatusLog');
+const scraperStatusStartButton = document.getElementById('scraperStatusStart');
+const scraperStatusRefreshButton = document.getElementById('scraperStatusRefresh');
 const ALL_MOVIES_PAGE_SIZE = 25;
 
 let changeSection = () => {};
@@ -45,6 +58,8 @@ let allMovies = [];
 let allMoviesPage = 1;
 let allMoviesLoaded = false;
 let allMoviesLoading = false;
+let currentScraperStatus = null;
+let scraperStatusTimeout = null;
 
 function showToast(message, variant = 'info') {
   toast.textContent = message;
@@ -104,23 +119,299 @@ async function syncTmdb() {
 }
 
 async function scrapeKinox() {
+  const buttonsToDisable = [topbarScrapeButton, scraperStatusStartButton];
+  buttonsToDisable.forEach((button) => {
+    if (button) {
+      button.disabled = true;
+    }
+  });
   try {
-    showToast('Kinox Scraper läuft...');
+    showToast('Kinox Scraper wird gestartet...');
     const startPage = Number(currentSettings.kinox_start_page) || 1;
     const endPage = Number(currentSettings.kinox_end_page) || startPage;
-    const { success, links } = await callApi('/api/scrape/kinox', {
+    const response = await callApi('/api/scrape/kinox', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ start_page: startPage, end_page: endPage }),
     });
-    if (success) {
-      showToast(`${links.length} Links gespeichert.`, 'success');
-      window.location.reload();
+    if (response?.success) {
+      const normalizedStatus = normalizeScraperStatus(response.status);
+      currentScraperStatus = normalizedStatus;
+      updateScraperStatusUI(normalizedStatus);
+      if (response.started) {
+        showToast('Scraper läuft im Hintergrund.', 'success');
+      } else if (response.message) {
+        showToast(response.message, 'info');
+      }
+      ensureScraperStatusPolling(response.started ? 1500 : undefined);
     }
   } catch (_) {
     // Fehler bereits behandelt
+  } finally {
+    if (topbarScrapeButton) {
+      topbarScrapeButton.disabled = false;
+    }
+    if (!currentScraperStatus?.running) {
+      if (scraperStatusStartButton) {
+        scraperStatusStartButton.disabled = false;
+      }
+    }
   }
 }
+
+function normalizeScraperStatus(raw) {
+  const base = {
+    running: false,
+    start_page: null,
+    end_page: null,
+    current_page: null,
+    processed_pages: 0,
+    total_pages: 0,
+    processed_links: 0,
+    last_title: '',
+    message: 'Bereit.',
+    error: null,
+    started_at: null,
+    finished_at: null,
+    last_update: null,
+    progress: 0,
+    log: [],
+  };
+
+  if (!raw || typeof raw !== 'object') {
+    return { ...base };
+  }
+
+  const status = { ...base, ...raw };
+
+  const numericFields = [
+    'start_page',
+    'end_page',
+    'current_page',
+    'processed_pages',
+    'total_pages',
+    'processed_links',
+    'progress',
+  ];
+  numericFields.forEach((key) => {
+    const value = Number(status[key]);
+    status[key] = Number.isFinite(value) ? value : base[key];
+  });
+
+  status.running = Boolean(status.running);
+  status.log = Array.isArray(status.log) ? status.log.filter(Boolean) : [];
+  status.message = typeof status.message === 'string' && status.message.trim() ? status.message : base.message;
+  status.last_title = typeof status.last_title === 'string' && status.last_title.trim() ? status.last_title : '';
+  status.error = typeof status.error === 'string' && status.error.trim() ? status.error : null;
+
+  return status;
+}
+
+function formatScraperLogTime(value) {
+  if (!value) return '–';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function formatScraperUpdated(value) {
+  if (!value) return 'Noch keine Aktivität';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return `Aktualisiert: ${value}`;
+  }
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  const timeString = date.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  if (sameDay) {
+    return `Aktualisiert: ${timeString}`;
+  }
+  const dateString = date.toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  return `Aktualisiert: ${dateString} ${timeString}`;
+}
+
+function renderScraperStatusLog(entries) {
+  if (!scraperStatusLog) return;
+
+  scraperStatusLog.innerHTML = '';
+
+  const safeEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  if (!safeEntries.length) {
+    const empty = document.createElement('li');
+    empty.className = 'scraper-status__log-item is-empty';
+    empty.textContent = 'Noch keine Aktivitäten.';
+    scraperStatusLog.appendChild(empty);
+    return;
+  }
+
+  const visible = safeEntries.slice(-25).reverse();
+  visible.forEach((entry) => {
+    const item = document.createElement('li');
+    item.className = 'scraper-status__log-item';
+    if (entry.level) {
+      item.dataset.level = entry.level;
+    }
+
+    const time = document.createElement('span');
+    time.className = 'scraper-status__log-time';
+    time.textContent = formatScraperLogTime(entry.timestamp);
+
+    const text = document.createElement('span');
+    text.className = 'scraper-status__log-text';
+    text.textContent = entry.message || '';
+
+    item.appendChild(time);
+    item.appendChild(text);
+    scraperStatusLog.appendChild(item);
+  });
+}
+
+function updateScraperStatusUI(status) {
+  const normalized = normalizeScraperStatus(status);
+  currentScraperStatus = normalized;
+
+  const progressValue = Math.max(0, Math.min(100, normalized.progress || 0));
+  const message = normalized.message || (normalized.running ? 'Scraper läuft…' : 'Bereit.');
+  const state = normalized.running ? 'running' : normalized.error ? 'error' : normalized.processed_links > 0 ? 'done' : 'idle';
+
+  if (scraperStatusPanel) {
+    scraperStatusPanel.dataset.running = normalized.running ? 'true' : 'false';
+  }
+  if (scraperStatusMessage) {
+    scraperStatusMessage.textContent = message;
+  }
+  if (scraperStatusState) {
+    const stateText = state === 'running' ? 'Läuft' : state === 'error' ? 'Fehler' : state === 'done' ? 'Fertig' : 'Bereit';
+    scraperStatusState.textContent = stateText;
+    scraperStatusState.dataset.state = state;
+  }
+  if (scraperStatusProgressBar) {
+    scraperStatusProgressBar.style.width = `${progressValue.toFixed(1)}%`;
+  }
+  if (scraperStatusProgressLabel) {
+    scraperStatusProgressLabel.textContent = `${progressValue.toFixed(1)}%`;
+  }
+  if (scraperStatusUpdated) {
+    scraperStatusUpdated.textContent = formatScraperUpdated(normalized.last_update);
+  }
+  if (scraperStatusPages) {
+    let pagesText = 'Noch nicht gestartet';
+    if (normalized.start_page != null && normalized.end_page != null && normalized.total_pages > 0) {
+      const start = normalized.start_page;
+      const end = normalized.end_page;
+      const current = normalized.current_page != null ? normalized.current_page : start;
+      const processed = normalized.processed_pages || 0;
+      if (normalized.running) {
+        pagesText = `Seite ${current} · ${start} – ${end}`;
+      } else {
+        pagesText = `${start} – ${end}`;
+      }
+      if (processed > 0) {
+        pagesText += ` · ${processed} abgeschlossen`;
+      }
+    }
+    scraperStatusPages.textContent = pagesText;
+  }
+  if (scraperStatusLinks) {
+    scraperStatusLinks.textContent = String(normalized.processed_links || 0);
+  }
+  if (scraperStatusTitle) {
+    scraperStatusTitle.textContent = normalized.last_title || '–';
+  }
+  if (scraperStatusStartButton) {
+    scraperStatusStartButton.disabled = normalized.running;
+  }
+
+  renderScraperStatusLog(normalized.log);
+}
+
+function cancelScraperStatusPoll() {
+  if (scraperStatusTimeout) {
+    clearTimeout(scraperStatusTimeout);
+    scraperStatusTimeout = null;
+  }
+}
+
+function scheduleScraperStatusPoll(delay = 6000) {
+  if (!scraperStatusPanel) return;
+  cancelScraperStatusPoll();
+  scraperStatusTimeout = window.setTimeout(async () => {
+    await fetchScraperStatus();
+    const nextDelay = currentScraperStatus?.running ? 2000 : 8000;
+    scheduleScraperStatusPoll(nextDelay);
+  }, delay);
+}
+
+async function fetchScraperStatus({ manual = false } = {}) {
+  if (!scraperStatusPanel) return;
+  try {
+    const response = await fetch('/api/scrape/status', { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Status konnte nicht geladen werden (${response.status}).`);
+    }
+    const payload = await response.json();
+    if (payload?.success && payload.status) {
+      updateScraperStatusUI(payload.status);
+    } else if (manual) {
+      showToast('Status konnte nicht geladen werden.', 'error');
+    }
+  } catch (error) {
+    console.error(error);
+    if (manual) {
+      showToast(error.message || 'Status konnte nicht geladen werden.', 'error');
+    }
+  }
+}
+
+function ensureScraperStatusPolling(initialDelay) {
+  if (!scraperStatusPanel) return;
+  const delay = typeof initialDelay === 'number' ? initialDelay : currentScraperStatus?.running ? 2000 : 8000;
+  scheduleScraperStatusPoll(delay);
+}
+
+function initScraperStatus() {
+  if (!scraperStatusPanel) return;
+
+  let initialStatus = null;
+  try {
+    const raw = scraperStatusPanel.dataset.initialStatus;
+    if (raw) {
+      initialStatus = JSON.parse(raw);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+  scraperStatusPanel.dataset.initialStatus = '';
+
+  const normalized = normalizeScraperStatus(initialStatus);
+  updateScraperStatusUI(normalized);
+  ensureScraperStatusPolling(normalized.running ? 2000 : 8000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!scraperStatusPanel) return;
+  if (document.hidden) {
+    cancelScraperStatusPoll();
+    return;
+  }
+  fetchScraperStatus().finally(() => ensureScraperStatusPolling());
+});
+
+window.addEventListener('beforeunload', () => {
+  cancelScraperStatusPoll();
+});
 
 async function resetScrapedContent() {
   if (!window.confirm('Möchtest du wirklich alle gescrapten Inhalte löschen?')) {
@@ -257,12 +548,15 @@ function initMediaRails() {
 
 function bindButtons() {
   const syncButton = document.getElementById('syncTmdb');
-  const scrapeButton = document.getElementById('scrapeKinox');
   const settingsForm = document.getElementById('settingsForm');
   const resetButton = document.getElementById('resetScraped');
 
   syncButton?.addEventListener('click', syncTmdb);
-  scrapeButton?.addEventListener('click', scrapeKinox);
+  topbarScrapeButton?.addEventListener('click', scrapeKinox);
+  scraperStatusStartButton?.addEventListener('click', scrapeKinox);
+  scraperStatusRefreshButton?.addEventListener('click', () => {
+    fetchScraperStatus({ manual: true }).then(() => ensureScraperStatusPolling());
+  });
   resetButton?.addEventListener('click', resetScrapedContent);
 
   if (settingsForm) {
@@ -968,6 +1262,7 @@ initNavigation();
 bindContentCards();
 initMediaRails();
 initHero();
+initScraperStatus();
 loadSettings();
 if (document.body?.dataset?.loadAllMovies === 'true') {
   ensureAllMoviesLoaded();

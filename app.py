@@ -1,6 +1,8 @@
 import os
 import re
+from collections import deque
 from datetime import datetime
+from threading import Lock, Thread
 from typing import List, Optional, Set, Tuple
 
 import requests
@@ -22,6 +24,25 @@ app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+SCRAPER_STATUS_LOCK = Lock()
+SCRAPER_LOG = deque(maxlen=200)
+SCRAPER_STATUS = {
+    "running": False,
+    "start_page": None,
+    "end_page": None,
+    "current_page": None,
+    "processed_pages": 0,
+    "total_pages": 0,
+    "processed_links": 0,
+    "last_title": None,
+    "message": "Bereit.",
+    "error": None,
+    "started_at": None,
+    "finished_at": None,
+    "last_update": None,
+}
+SCRAPER_THREAD: Optional[Thread] = None
 
 
 class Movie(db.Model):
@@ -444,6 +465,148 @@ def attach_streaming_link(movie_title: str, streaming_url: str, mirror_info: Opt
     return link
 
 
+def _now_iso() -> str:
+    return datetime.utcnow().isoformat()
+
+
+def _append_scraper_log(message: str, level: str = "info") -> None:
+    entry = {"timestamp": _now_iso(), "message": message, "level": level}
+    with SCRAPER_STATUS_LOCK:
+        SCRAPER_LOG.append(entry)
+
+
+def _set_scraper_status(**kwargs) -> None:
+    with SCRAPER_STATUS_LOCK:
+        SCRAPER_STATUS.update(kwargs)
+        SCRAPER_STATUS["last_update"] = _now_iso()
+
+
+def get_scraper_status() -> dict:
+    with SCRAPER_STATUS_LOCK:
+        status = dict(SCRAPER_STATUS)
+        log_entries = list(SCRAPER_LOG)
+
+    total_pages = status.get("total_pages") or 0
+    processed_pages = status.get("processed_pages") or 0
+    progress = 0.0
+    if total_pages > 0:
+        progress = max(0.0, min(100.0, (processed_pages / total_pages) * 100.0))
+
+    status["progress"] = progress
+    status["log"] = log_entries
+    return status
+
+
+def _start_kinox_scraper(start_page: int, end_page: int) -> bool:
+    global SCRAPER_THREAD
+
+    total_pages = max(0, end_page - start_page + 1)
+    now_iso = _now_iso()
+
+    with SCRAPER_STATUS_LOCK:
+        if SCRAPER_STATUS.get("running"):
+            return False
+        SCRAPER_STATUS.update(
+            {
+                "running": True,
+                "start_page": start_page,
+                "end_page": end_page,
+                "current_page": start_page,
+                "processed_pages": 0,
+                "total_pages": total_pages,
+                "processed_links": 0,
+                "last_title": None,
+                "message": "Scraper wird gestartet…",
+                "error": None,
+                "started_at": now_iso,
+                "finished_at": None,
+                "last_update": now_iso,
+            }
+        )
+        SCRAPER_LOG.clear()
+
+    _append_scraper_log(f"Scraper gestartet (Seiten {start_page}–{end_page}).")
+
+    thread = Thread(target=_run_kinox_scraper, args=(start_page, end_page), daemon=True)
+    with SCRAPER_STATUS_LOCK:
+        SCRAPER_THREAD = thread
+    thread.start()
+    return True
+
+
+def _run_kinox_scraper(start_page: int, end_page: int) -> None:
+    global SCRAPER_THREAD
+
+    processed_links = 0
+
+    try:
+        with app.app_context():
+            for page in range(start_page, end_page + 1):
+                _append_scraper_log(f"Seite {page} wird geladen…")
+                _set_scraper_status(current_page=page, message=f"Seite {page} wird geladen…", error=None)
+
+                def progress_callback(entry: dict) -> None:
+                    title = entry.get("title") or "Unbekannt"
+                    _set_scraper_status(last_title=title, message=f"Gefunden: {title}")
+
+                try:
+                    entries = scrape_kinox_page(page, progress_callback=progress_callback)
+                except Exception as exc:  # pragma: no cover - network errors are not predictable
+                    db.session.rollback()
+                    error_text = f"Fehler beim Laden von Seite {page}: {exc}"
+                    _append_scraper_log(error_text, "error")
+                    _set_scraper_status(
+                        running=False,
+                        error=str(exc),
+                        message="Fehler beim Laden einer Seite.",
+                        finished_at=_now_iso(),
+                        current_page=page,
+                    )
+                    return
+
+                if not entries:
+                    _append_scraper_log(f"Keine Einträge auf Seite {page} gefunden.")
+                    _set_scraper_status(message=f"Keine Einträge auf Seite {page}", last_title=None)
+
+                for entry in entries:
+                    title = entry.get("title") or "Unbekannt"
+                    _set_scraper_status(last_title=title, message=f"Speichere: {title}", error=None)
+                    try:
+                        attach_streaming_link(
+                            entry.get("title") or title,
+                            entry["streaming_url"],
+                            entry.get("mirror"),
+                        )
+                        processed_links += 1
+                        _set_scraper_status(processed_links=processed_links, error=None)
+                        _append_scraper_log(f"Link gespeichert: {title}", "success")
+                    except Exception as exc:  # pragma: no cover - depends on DB state
+                        db.session.rollback()
+                        _append_scraper_log(f"Fehler beim Speichern von {title}: {exc}", "error")
+                        _set_scraper_status(error=str(exc), message=f"Fehler bei {title}")
+
+                processed_pages = page - start_page + 1
+                _set_scraper_status(
+                    processed_pages=processed_pages,
+                    message=f"Seite {page} abgeschlossen",
+                    error=None,
+                )
+
+            _append_scraper_log("Scraper abgeschlossen.", "success")
+            _set_scraper_status(
+                running=False,
+                current_page=None,
+                message="Scraper abgeschlossen.",
+                finished_at=_now_iso(),
+                processed_pages=end_page - start_page + 1,
+                error=None,
+            )
+    finally:
+        db.session.remove()
+        with SCRAPER_STATUS_LOCK:
+            SCRAPER_THREAD = None
+
+
 def build_library_context() -> dict:
     popular_movies = Movie.query.order_by(Movie.rating.desc().nullslast()).limit(20).all()
     recent_movies = Movie.query.order_by(Movie.created_at.desc()).limit(20).all()
@@ -531,6 +694,7 @@ def serien():
 @app.route("/scraper")
 def scraper_view():
     context = build_library_context()
+    context["scraper_status"] = get_scraper_status()
     return render_template(
         "scraper.html",
         active_page="scraper",
@@ -598,13 +762,15 @@ def api_scrape_kinox():
     if end_page < start_page:
         start_page, end_page = end_page, start_page
 
-    collected: List[dict] = []
-    for page in range(start_page, end_page + 1):
-        entries = scrape_kinox_page(page)
-        for entry in entries:
-            link = attach_streaming_link(entry["title"], entry["streaming_url"], entry.get("mirror"))
-            collected.append(link.to_dict())
-    return jsonify({"success": True, "links": collected})
+    started = _start_kinox_scraper(start_page, end_page)
+    status = get_scraper_status()
+    message = "Scraper gestartet." if started else "Scraper läuft bereits."
+    return jsonify({"success": True, "status": status, "started": started, "message": message})
+
+
+@app.route("/api/scrape/status")
+def api_scrape_status():
+    return jsonify({"success": True, "status": get_scraper_status()})
 
 
 @app.route("/api/reset/scraped", methods=["POST"])

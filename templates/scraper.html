@@ -9,6 +9,111 @@
     </div>
 </section>
 
+{% set initial_status = scraper_status or {} %}
+{% set initial_progress = (initial_status.progress or 0.0) %}
+{% if initial_status.error %}
+    {% set initial_state = 'Fehler' %}
+{% elif initial_status.running %}
+    {% set initial_state = 'Läuft' %}
+{% elif initial_status.processed_links %}
+    {% set initial_state = 'Fertig' %}
+{% else %}
+    {% set initial_state = 'Bereit' %}
+{% endif %}
+{% set initial_message = initial_status.message or 'Bereit.' %}
+{% set initial_pages = 'Noch nicht gestartet' %}
+{% if initial_status.start_page is not none and initial_status.end_page is not none %}
+    {% if initial_status.running and initial_status.current_page is not none %}
+        {% set initial_pages = 'Seite ' ~ initial_status.current_page ~ ' · ' ~ initial_status.start_page ~ ' – ' ~ initial_status.end_page %}
+    {% else %}
+        {% set initial_pages = initial_status.start_page ~ ' – ' ~ initial_status.end_page %}
+    {% endif %}
+    {% if initial_status.processed_pages %}
+        {% set initial_pages = initial_pages ~ ' · ' ~ initial_status.processed_pages ~ ' abgeschlossen' %}
+    {% endif %}
+{% endif %}
+
+<section
+    class="surface scraper-status"
+    id="scraperStatusPanel"
+    data-initial-status='{{ initial_status|tojson }}'
+>
+    <div class="scraper-status__header">
+        <div>
+            <h2>Kinox Scraper</h2>
+            <p id="scraperStatusMessage" class="scraper-status__message" aria-live="polite">
+                {{ initial_message }}
+            </p>
+        </div>
+        <div class="scraper-status__actions">
+            <span class="scraper-status__state" id="scraperStatusState">{{ initial_state }}</span>
+            <button type="button" class="chip" id="scraperStatusStart">
+                <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                <span>Scraper starten</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="scraper-status__body">
+        <div class="scraper-status__progress">
+            <div class="scraper-status__progress-bar">
+                <div
+                    class="scraper-status__progress-value"
+                    id="scraperStatusProgressBar"
+                    style="width: {{ '%.1f'|format(initial_progress) }}%;"
+                ></div>
+            </div>
+            <div class="scraper-status__progress-meta">
+                <span id="scraperStatusProgressLabel">{{ '%.1f'|format(initial_progress) }}%</span>
+                <span id="scraperStatusUpdated">
+                    {% if initial_status.last_update %}
+                        Aktualisiert: {{ initial_status.last_update }}
+                    {% else %}
+                        Noch keine Aktivität
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+
+        <dl class="scraper-status__metrics">
+            <div>
+                <dt>Seiten</dt>
+                <dd id="scraperStatusPages">{{ initial_pages }}</dd>
+            </div>
+            <div>
+                <dt>Links gespeichert</dt>
+                <dd id="scraperStatusLinks">{{ initial_status.processed_links or 0 }}</dd>
+            </div>
+            <div>
+                <dt>Letzter Titel</dt>
+                <dd id="scraperStatusTitle">{{ initial_status.last_title or '–' }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="scraper-status__log">
+        <div class="scraper-status__log-header">
+            <h3>Aktivitätsprotokoll</h3>
+            <button type="button" class="chip chip--subtle" id="scraperStatusRefresh">
+                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                <span>Aktualisieren</span>
+            </button>
+        </div>
+        <ul id="scraperStatusLog" class="scraper-status__log-list">
+            {% if initial_status.log %}
+                {% for entry in initial_status.log|reverse %}
+                <li class="scraper-status__log-item" data-level="{{ entry.level }}">
+                    <span class="scraper-status__log-time">{{ entry.timestamp }}</span>
+                    <span class="scraper-status__log-text">{{ entry.message }}</span>
+                </li>
+                {% endfor %}
+            {% else %}
+                <li class="scraper-status__log-item is-empty">Noch keine Aktivitäten.</li>
+            {% endif %}
+        </ul>
+    </div>
+</section>
+
 <section class="surface">
     <div class="scraper-grid">
         {% if scraped %}
