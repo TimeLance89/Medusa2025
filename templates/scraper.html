@@ -21,16 +21,24 @@
     {% set initial_state = 'Bereit' %}
 {% endif %}
 {% set initial_message = initial_status.message or 'Bereit.' %}
+{% set status_next = initial_status.next_page or kinox_next_page %}
+{% set status_last = initial_status.last_page or (kinox_last_page if kinox_last_page else None) %}
 {% set initial_pages = 'Noch nicht gestartet' %}
-{% if initial_status.start_page is not none and initial_status.end_page is not none %}
-    {% if initial_status.running and initial_status.current_page is not none %}
-        {% set initial_pages = 'Seite ' ~ initial_status.current_page ~ ' · ' ~ initial_status.start_page ~ ' – ' ~ initial_status.end_page %}
-    {% else %}
-        {% set initial_pages = initial_status.start_page ~ ' – ' ~ initial_status.end_page %}
+{% if initial_status.running and initial_status.current_page is not none %}
+    {% set initial_pages = 'Seite ' ~ initial_status.current_page %}
+    {% if status_next and status_next != initial_status.current_page %}
+        {% set initial_pages = initial_pages ~ ' · nächste: ' ~ status_next %}
     {% endif %}
     {% if initial_status.processed_pages %}
         {% set initial_pages = initial_pages ~ ' · ' ~ initial_status.processed_pages ~ ' abgeschlossen' %}
     {% endif %}
+{% elif status_last %}
+    {% set initial_pages = 'Letzte: ' ~ status_last %}
+    {% if status_next %}
+        {% set initial_pages = initial_pages ~ ' · nächste: ' ~ status_next %}
+    {% endif %}
+{% elif status_next %}
+    {% set initial_pages = 'Bereit ab Seite ' ~ status_next %}
 {% endif %}
 
 <section

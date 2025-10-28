@@ -18,14 +18,9 @@
                 <span class="form-hint">Wird für die Synchronisation von TMDB benötigt.</span>
             </label>
             <label class="form-field">
-                <span class="form-label">Kinox Startseite</span>
-                <input type="number" min="1" name="kinox_start_page" />
-                <span class="form-hint">Erste Seite für den Scraper.</span>
-            </label>
-            <label class="form-field">
-                <span class="form-label">Kinox Endseite</span>
-                <input type="number" min="1" name="kinox_end_page" />
-                <span class="form-hint">Letzte Seite für den Scraper.</span>
+                <span class="form-label">Kinox nächste Seite</span>
+                <input type="number" min="1" name="kinox_next_page" value="{{ kinox_next_page }}" />
+                <span class="form-hint">Der Scraper setzt automatisch fort. Letzte abgeschlossene Seite: <strong id="kinoxLastPage">{{ kinox_last_page or '–' }}</strong>.</span>
             </label>
         </div>
         <div class="form-actions">

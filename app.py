@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from collections import deque
 from datetime import datetime
 from threading import Lock, Thread
@@ -30,10 +31,10 @@ SCRAPER_LOG = deque(maxlen=200)
 SCRAPER_STATUS = {
     "running": False,
     "start_page": None,
-    "end_page": None,
     "current_page": None,
+    "next_page": None,
+    "last_page": None,
     "processed_pages": 0,
-    "total_pages": 0,
     "processed_links": 0,
     "last_title": None,
     "message": "Bereit.",
@@ -488,19 +489,29 @@ def get_scraper_status() -> dict:
 
     total_pages = status.get("total_pages") or 0
     processed_pages = status.get("processed_pages") or 0
+
+    progress_mode = "determinate" if total_pages else (
+        "indeterminate" if status.get("running") else "idle"
+    )
     progress = 0.0
     if total_pages > 0:
         progress = max(0.0, min(100.0, (processed_pages / total_pages) * 100.0))
 
+    if not status.get("next_page"):
+        status["next_page"] = get_int_setting("kinox_next_page", 1)
+    if not status.get("last_page"):
+        last_page = get_int_setting("kinox_last_page", 0)
+        status["last_page"] = last_page or None
+
     status["progress"] = progress
+    status["progress_mode"] = progress_mode
     status["log"] = log_entries
     return status
 
 
-def _start_kinox_scraper(start_page: int, end_page: int) -> bool:
+def _start_kinox_scraper(start_page: int) -> bool:
     global SCRAPER_THREAD
 
-    total_pages = max(0, end_page - start_page + 1)
     now_iso = _now_iso()
 
     with SCRAPER_STATUS_LOCK:
@@ -510,10 +521,10 @@ def _start_kinox_scraper(start_page: int, end_page: int) -> bool:
             {
                 "running": True,
                 "start_page": start_page,
-                "end_page": end_page,
                 "current_page": start_page,
+                "next_page": start_page,
+                "last_page": None,
                 "processed_pages": 0,
-                "total_pages": total_pages,
                 "processed_links": 0,
                 "last_title": None,
                 "message": "Scraper wird gestartet…",
@@ -525,29 +536,40 @@ def _start_kinox_scraper(start_page: int, end_page: int) -> bool:
         )
         SCRAPER_LOG.clear()
 
-    _append_scraper_log(f"Scraper gestartet (Seiten {start_page}–{end_page}).")
+    _append_scraper_log(f"Scraper gestartet (ab Seite {start_page}).")
 
-    thread = Thread(target=_run_kinox_scraper, args=(start_page, end_page), daemon=True)
+    thread = Thread(target=_run_kinox_scraper, args=(start_page,), daemon=True)
     with SCRAPER_STATUS_LOCK:
         SCRAPER_THREAD = thread
     thread.start()
     return True
 
 
-def _run_kinox_scraper(start_page: int, end_page: int) -> None:
+def _run_kinox_scraper(start_page: int) -> None:
     global SCRAPER_THREAD
 
     processed_links = 0
+    processed_pages = 0
+    page = start_page
 
     try:
         with app.app_context():
-            for page in range(start_page, end_page + 1):
+            while True:
                 _append_scraper_log(f"Seite {page} wird geladen…")
-                _set_scraper_status(current_page=page, message=f"Seite {page} wird geladen…", error=None)
+                _set_scraper_status(
+                    current_page=page,
+                    next_page=page,
+                    message=f"Seite {page} wird geladen…",
+                    error=None,
+                )
 
                 def progress_callback(entry: dict) -> None:
                     title = entry.get("title") or "Unbekannt"
-                    _set_scraper_status(last_title=title, message=f"Gefunden: {title}")
+                    _set_scraper_status(
+                        last_title=title,
+                        message=f"Gefunden: {title}",
+                        current_page=page,
+                    )
 
                 try:
                     entries = scrape_kinox_page(page, progress_callback=progress_callback)
@@ -561,6 +583,7 @@ def _run_kinox_scraper(start_page: int, end_page: int) -> None:
                         message="Fehler beim Laden einer Seite.",
                         finished_at=_now_iso(),
                         current_page=page,
+                        next_page=page,
                     )
                     return
 
@@ -585,26 +608,34 @@ def _run_kinox_scraper(start_page: int, end_page: int) -> None:
                         _append_scraper_log(f"Fehler beim Speichern von {title}: {exc}", "error")
                         _set_scraper_status(error=str(exc), message=f"Fehler bei {title}")
 
-                processed_pages = page - start_page + 1
+                processed_pages += 1
+                next_page = page + 1
+                set_setting("kinox_last_page", str(page))
+                set_setting("kinox_next_page", str(next_page))
                 _set_scraper_status(
                     processed_pages=processed_pages,
                     message=f"Seite {page} abgeschlossen",
                     error=None,
+                    current_page=page,
+                    next_page=next_page,
+                    last_page=page,
+                    processed_links=processed_links,
                 )
+                _append_scraper_log(f"Seite {page} abgeschlossen. Nächste Seite: {next_page}.")
 
-            _append_scraper_log("Scraper abgeschlossen.", "success")
-            _set_scraper_status(
-                running=False,
-                current_page=None,
-                message="Scraper abgeschlossen.",
-                finished_at=_now_iso(),
-                processed_pages=end_page - start_page + 1,
-                error=None,
-            )
+                page = next_page
+                time.sleep(1)
     finally:
         db.session.remove()
         with SCRAPER_STATUS_LOCK:
             SCRAPER_THREAD = None
+            still_running = SCRAPER_STATUS.get("running")
+        if still_running:
+            _set_scraper_status(
+                running=False,
+                message="Scraper angehalten.",
+                finished_at=_now_iso(),
+            )
 
 
 def build_library_context() -> dict:
@@ -695,6 +726,8 @@ def serien():
 def scraper_view():
     context = build_library_context()
     context["scraper_status"] = get_scraper_status()
+    context["kinox_next_page"] = get_int_setting("kinox_next_page", 1)
+    context["kinox_last_page"] = get_int_setting("kinox_last_page", 0)
     return render_template(
         "scraper.html",
         active_page="scraper",
@@ -711,6 +744,8 @@ def settings_view():
         active_page="settings",
         show_detail_panel=False,
         page_title="Medusa – Einstellungen",
+        kinox_next_page=get_int_setting("kinox_next_page", 1),
+        kinox_last_page=get_int_setting("kinox_last_page", 0),
     )
 
 
@@ -750,19 +785,20 @@ def api_movie_detail(movie_id: int):
 @app.route("/api/scrape/kinox", methods=["POST"])
 def api_scrape_kinox():
     data = request.get_json(silent=True) or {}
-    start_page = int(
-        data.get("start_page")
-        or get_int_setting("kinox_start_page", 1)
-    )
-    end_page = int(
-        data.get("end_page")
-        or get_int_setting("kinox_end_page", start_page)
-    )
+    start_page = data.get("from_page") or data.get("start_page")
+    if start_page is not None:
+        try:
+            start_page = int(start_page)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "Ungültige Startseite."}), 400
+        if start_page < 1:
+            return jsonify({"success": False, "message": "Startseite muss größer als 0 sein."}), 400
+        set_setting("kinox_next_page", str(start_page))
+        set_setting("kinox_last_page", str(max(0, start_page - 1)))
+    else:
+        start_page = get_int_setting("kinox_next_page", 1)
 
-    if end_page < start_page:
-        start_page, end_page = end_page, start_page
-
-    started = _start_kinox_scraper(start_page, end_page)
+    started = _start_kinox_scraper(start_page)
     status = get_scraper_status()
     message = "Scraper gestartet." if started else "Scraper läuft bereits."
     return jsonify({"success": True, "status": status, "started": started, "message": message})
@@ -807,8 +843,8 @@ def api_settings():
         return jsonify(
             {
                 "tmdb_api_key": get_tmdb_api_key(),
-                "kinox_start_page": get_int_setting("kinox_start_page", 1),
-                "kinox_end_page": get_int_setting("kinox_end_page", 1),
+                "kinox_next_page": get_int_setting("kinox_next_page", 1),
+                "kinox_last_page": get_int_setting("kinox_last_page", 0),
             }
         )
 
@@ -824,18 +860,19 @@ def api_settings():
     elif data.get("tmdb_api_key") is not None:
         errors["tmdb_api_key"] = "TMDB API Key darf nicht leer sein."
 
-    for key in ("kinox_start_page", "kinox_end_page"):
-        if key in data:
-            try:
-                value = int(data[key])
-            except (TypeError, ValueError):
-                errors[key] = "Ungültige Zahl."
-                continue
-            if value < 1:
-                errors[key] = "Wert muss größer oder gleich 1 sein."
-                continue
-            set_setting(key, str(value))
-            response_payload[key] = value
+    if "kinox_next_page" in data:
+        try:
+            next_page = int(data["kinox_next_page"])
+        except (TypeError, ValueError):
+            errors["kinox_next_page"] = "Ungültige Zahl."
+        else:
+            if next_page < 1:
+                errors["kinox_next_page"] = "Wert muss größer oder gleich 1 sein."
+            else:
+                set_setting("kinox_next_page", str(next_page))
+                set_setting("kinox_last_page", str(max(0, next_page - 1)))
+                response_payload["kinox_next_page"] = next_page
+                response_payload["kinox_last_page"] = max(0, next_page - 1)
 
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
