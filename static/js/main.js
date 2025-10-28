@@ -40,6 +40,7 @@ const scraperStatusTitle = document.getElementById('scraperStatusTitle');
 const scraperStatusLog = document.getElementById('scraperStatusLog');
 const scraperStatusStartButton = document.getElementById('scraperStatusStart');
 const scraperStatusRefreshButton = document.getElementById('scraperStatusRefresh');
+const kinoxLastPageLabel = document.getElementById('kinoxLastPage');
 const ALL_MOVIES_PAGE_SIZE = 25;
 
 let changeSection = () => {};
@@ -47,8 +48,8 @@ let currentSectionName = 'start';
 let previousSectionName = 'start';
 let currentSettings = {
   tmdb_api_key: '',
-  kinox_start_page: 1,
-  kinox_end_page: 1,
+  kinox_next_page: 1,
+  kinox_last_page: 0,
 };
 let currentTrailer = null;
 let currentStreamingLinks = [];
@@ -127,16 +128,21 @@ async function scrapeKinox() {
   });
   try {
     showToast('Kinox Scraper wird gestartet...');
-    const startPage = Number(currentSettings.kinox_start_page) || 1;
-    const endPage = Number(currentSettings.kinox_end_page) || startPage;
     const response = await callApi('/api/scrape/kinox', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ start_page: startPage, end_page: endPage }),
+      body: JSON.stringify({}),
     });
     if (response?.success) {
       const normalizedStatus = normalizeScraperStatus(response.status);
       currentScraperStatus = normalizedStatus;
+      if (Number.isFinite(normalizedStatus.next_page)) {
+        currentSettings.kinox_next_page = normalizedStatus.next_page;
+      }
+      if (Number.isFinite(normalizedStatus.last_page)) {
+        currentSettings.kinox_last_page = normalizedStatus.last_page;
+      }
+      refreshKinoxSettingsUi();
       updateScraperStatusUI(normalizedStatus);
       if (response.started) {
         showToast('Scraper läuft im Hintergrund.', 'success');
@@ -163,8 +169,9 @@ function normalizeScraperStatus(raw) {
   const base = {
     running: false,
     start_page: null,
-    end_page: null,
     current_page: null,
+    next_page: null,
+    last_page: null,
     processed_pages: 0,
     total_pages: 0,
     processed_links: 0,
@@ -175,6 +182,7 @@ function normalizeScraperStatus(raw) {
     finished_at: null,
     last_update: null,
     progress: 0,
+    progress_mode: 'idle',
     log: [],
   };
 
@@ -186,12 +194,13 @@ function normalizeScraperStatus(raw) {
 
   const numericFields = [
     'start_page',
-    'end_page',
     'current_page',
     'processed_pages',
     'total_pages',
     'processed_links',
     'progress',
+    'next_page',
+    'last_page',
   ];
   numericFields.forEach((key) => {
     const value = Number(status[key]);
@@ -203,6 +212,7 @@ function normalizeScraperStatus(raw) {
   status.message = typeof status.message === 'string' && status.message.trim() ? status.message : base.message;
   status.last_title = typeof status.last_title === 'string' && status.last_title.trim() ? status.last_title : '';
   status.error = typeof status.error === 'string' && status.error.trim() ? status.error : null;
+  status.progress_mode = typeof status.progress_mode === 'string' ? status.progress_mode : base.progress_mode;
 
   return status;
 }
@@ -282,7 +292,16 @@ function updateScraperStatusUI(status) {
   const normalized = normalizeScraperStatus(status);
   currentScraperStatus = normalized;
 
-  const progressValue = Math.max(0, Math.min(100, normalized.progress || 0));
+  if (Number.isFinite(normalized.next_page)) {
+    currentSettings.kinox_next_page = normalized.next_page;
+  }
+  if (Number.isFinite(normalized.last_page)) {
+    currentSettings.kinox_last_page = normalized.last_page;
+  }
+  refreshKinoxSettingsUi();
+
+  const progressValue = Math.max(0, Math.min(100, Number(normalized.progress) || 0));
+  const progressMode = normalized.progress_mode || (normalized.total_pages > 0 ? 'determinate' : normalized.running ? 'indeterminate' : 'idle');
   const message = normalized.message || (normalized.running ? 'Scraper läuft…' : 'Bereit.');
   const state = normalized.running ? 'running' : normalized.error ? 'error' : normalized.processed_links > 0 ? 'done' : 'idle';
 
@@ -298,29 +317,50 @@ function updateScraperStatusUI(status) {
     scraperStatusState.dataset.state = state;
   }
   if (scraperStatusProgressBar) {
-    scraperStatusProgressBar.style.width = `${progressValue.toFixed(1)}%`;
+    if (progressMode === 'indeterminate') {
+      scraperStatusProgressBar.classList.add('is-indeterminate');
+      scraperStatusProgressBar.style.width = '28%';
+    } else {
+      scraperStatusProgressBar.classList.remove('is-indeterminate');
+      scraperStatusProgressBar.style.width = `${progressValue.toFixed(1)}%`;
+    }
   }
   if (scraperStatusProgressLabel) {
-    scraperStatusProgressLabel.textContent = `${progressValue.toFixed(1)}%`;
+    scraperStatusProgressLabel.textContent = progressMode === 'indeterminate' && normalized.running
+      ? 'Laufend'
+      : `${progressValue.toFixed(1)}%`;
   }
   if (scraperStatusUpdated) {
     scraperStatusUpdated.textContent = formatScraperUpdated(normalized.last_update);
   }
   if (scraperStatusPages) {
     let pagesText = 'Noch nicht gestartet';
-    if (normalized.start_page != null && normalized.end_page != null && normalized.total_pages > 0) {
-      const start = normalized.start_page;
-      const end = normalized.end_page;
-      const current = normalized.current_page != null ? normalized.current_page : start;
-      const processed = normalized.processed_pages || 0;
-      if (normalized.running) {
-        pagesText = `Seite ${current} · ${start} – ${end}`;
+    const nextPage = Number.isFinite(normalized.next_page) ? normalized.next_page : null;
+    const lastPage = Number.isFinite(normalized.last_page) ? normalized.last_page : null;
+    const currentPage = Number.isFinite(normalized.current_page) ? normalized.current_page : null;
+    const processed = normalized.processed_pages || 0;
+
+    if (normalized.running) {
+      if (currentPage) {
+        pagesText = `Seite ${currentPage}`;
+      } else if (nextPage) {
+        pagesText = `Bereit ab Seite ${nextPage}`;
       } else {
-        pagesText = `${start} – ${end}`;
+        pagesText = 'Scraper aktiv';
+      }
+      if (nextPage && (!currentPage || nextPage !== currentPage)) {
+        pagesText += ` · nächste: ${nextPage}`;
       }
       if (processed > 0) {
         pagesText += ` · ${processed} abgeschlossen`;
       }
+    } else if (lastPage) {
+      pagesText = `Letzte: ${lastPage}`;
+      if (nextPage) {
+        pagesText += ` · nächste: ${nextPage}`;
+      }
+    } else if (nextPage) {
+      pagesText = `Bereit ab Seite ${nextPage}`;
     }
     scraperStatusPages.textContent = pagesText;
   }
@@ -546,6 +586,18 @@ function initMediaRails() {
   });
 }
 
+function refreshKinoxSettingsUi() {
+  const form = document.getElementById('settingsForm');
+  const nextValue = Number(currentSettings.kinox_next_page);
+  if (form?.kinox_next_page && document.activeElement !== form.kinox_next_page) {
+    form.kinox_next_page.value = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : '';
+  }
+  if (kinoxLastPageLabel) {
+    const lastValue = Number(currentSettings.kinox_last_page);
+    kinoxLastPageLabel.textContent = Number.isFinite(lastValue) && lastValue > 0 ? String(lastValue) : '–';
+  }
+}
+
 function bindButtons() {
   const syncButton = document.getElementById('syncTmdb');
   const settingsForm = document.getElementById('settingsForm');
@@ -569,11 +621,13 @@ async function loadSettings() {
     const settings = await callApi('/api/settings');
     currentSettings = { ...currentSettings, ...settings };
     const form = document.getElementById('settingsForm');
-    if (!form) return;
+    if (!form) {
+      refreshKinoxSettingsUi();
+      return;
+    }
 
     form.tmdb_api_key.value = settings.tmdb_api_key || '';
-    form.kinox_start_page.value = settings.kinox_start_page ?? '';
-    form.kinox_end_page.value = settings.kinox_end_page ?? '';
+    refreshKinoxSettingsUi();
   } catch (_) {
     // Fehler bereits angezeigt
   }
@@ -586,12 +640,8 @@ async function saveSettings(event) {
     tmdb_api_key: form.tmdb_api_key.value.trim(),
   };
 
-  if (form.kinox_start_page.value) {
-    payload.kinox_start_page = form.kinox_start_page.value;
-  }
-
-  if (form.kinox_end_page.value) {
-    payload.kinox_end_page = form.kinox_end_page.value;
+  if (form.kinox_next_page?.value) {
+    payload.kinox_next_page = form.kinox_next_page.value;
   }
 
   try {
@@ -603,6 +653,7 @@ async function saveSettings(event) {
     });
     if (success) {
       currentSettings = { ...currentSettings, ...settings };
+      refreshKinoxSettingsUi();
       showToast('Einstellungen gespeichert.', 'success');
     }
   } catch (_) {
@@ -734,21 +785,49 @@ function renderAllMoviesPage() {
     card.classList.add('detail-all-card');
     card.dataset.movieId = String(movie.id);
 
-    const poster = document.createElement('div');
-    poster.className = 'detail-all-card__poster';
+    const media = document.createElement('div');
+    media.className = 'detail-all-card__media';
+
+    const image = document.createElement('div');
+    image.className = 'detail-all-card__image';
     const posterUrl = getMoviePosterUrl(movie);
     if (posterUrl) {
-      poster.style.backgroundImage = `url('${posterUrl}')`;
+      image.style.backgroundImage = `url('${posterUrl}')`;
     }
 
-    const title = document.createElement('div');
+    const overlay = document.createElement('div');
+    overlay.className = 'detail-all-card__overlay';
+
+    const meta = document.createElement('div');
+    meta.className = 'detail-all-card__meta';
+    const releaseYear = typeof movie.release_date === 'string' && movie.release_date ? movie.release_date.slice(0, 4) : '';
+    if (releaseYear) {
+      const year = document.createElement('span');
+      year.className = 'detail-all-card__year';
+      year.textContent = releaseYear;
+      meta.appendChild(year);
+    }
+    const ratingValue = Number(movie.rating);
+    if (Number.isFinite(ratingValue) && ratingValue > 0) {
+      const rating = document.createElement('span');
+      rating.className = 'detail-all-card__rating';
+      rating.textContent = ratingValue.toFixed(1);
+      meta.appendChild(rating);
+    }
+    if (meta.childElementCount > 0) {
+      overlay.appendChild(meta);
+    }
+
+    const title = document.createElement('h3');
     title.className = 'detail-all-card__title';
     title.textContent = movie.title || 'Unbekannt';
+    overlay.appendChild(title);
 
+    media.appendChild(image);
+    media.appendChild(overlay);
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
-    card.appendChild(poster);
-    card.appendChild(title);
+    card.appendChild(media);
     detailAllMoviesGrid.appendChild(card);
   });
 
