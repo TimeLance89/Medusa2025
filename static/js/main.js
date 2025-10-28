@@ -912,11 +912,15 @@ function closeTrailerModal() {
 
 function openTrailerModal() {
   if (!trailerModal || !currentTrailer) return;
-  const embedUrl = `https://www.youtube.com/embed/${currentTrailer.key}?rel=0&autoplay=1`;
+  const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${currentTrailer.key}`);
+  embedUrl.searchParams.set('autoplay', '1');
+  embedUrl.searchParams.set('rel', '0');
+  embedUrl.searchParams.set('modestbranding', '1');
+  embedUrl.searchParams.set('playsinline', '1');
   trailerModal.classList.add('show');
   trailerModal.setAttribute('aria-hidden', 'false');
   if (trailerModalFrame) {
-    trailerModalFrame.src = embedUrl;
+    trailerModalFrame.src = embedUrl.toString();
   }
   if (trailerModalTitle) {
     const trailerName = currentTrailer.name || 'Trailer';
