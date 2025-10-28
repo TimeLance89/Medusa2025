@@ -1,0 +1,71 @@
+<section class="detail-panel" data-section="detail">
+    <div class="detail-viewport">
+        <div class="detail-hero" id="detailHero">
+            <div class="detail-hero-media" id="detailBackdrop"></div>
+            <div class="detail-hero-gradient"></div>
+            <div class="detail-hero-content">
+                <div class="detail-hero-top">
+                    <button class="detail-back" type="button" aria-label="Zurück">
+                        <span class="detail-back-icon">←</span>
+                        <span>Zurück</span>
+                    </button>
+                    <div class="detail-hero-meta">
+                        <div class="detail-hero-poster">
+                            <img
+                                id="detailPoster"
+                                alt="Poster"
+                                data-placeholder="{{ url_for('static', filename='images/poster-placeholder.svg') }}"
+                            />
+                        </div>
+                        <div class="detail-hero-info">
+                            <div class="detail-hero-head">
+                                <h2 id="detailTitle"></h2>
+                                <p id="detailTagline" class="detail-tagline"></p>
+                            </div>
+                            <div class="detail-meta" id="detailMeta"></div>
+                            <p id="detailOverview" class="detail-hero-overview"></p>
+                            <div class="detail-hero-actions">
+                                <button class="detail-action primary" type="button" id="detailWatch" disabled>
+                                    <span class="detail-action-icon">▶</span>
+                                    <span id="detailWatchLabel">Ansehen</span>
+                                </button>
+                                <button class="detail-action ghost" type="button" id="detailTrailerButton" disabled>
+                                    <span class="detail-action-icon">🎬</span>
+                                    <span>Trailer</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="detail-content">
+            <div class="detail-columns">
+                <div class="detail-main">
+                    <section class="detail-section detail-overview">
+                        <h3>Überblick</h3>
+                        <p id="detailOverviewSecondary"></p>
+                        <ul id="detailFacts" class="detail-facts"></ul>
+                    </section>
+                    <section class="detail-section detail-section--cast">
+                        <div class="detail-section-head">
+                            <h3>Besetzung</h3>
+                            <span class="detail-section-subtitle">Die wichtigsten Schauspieler:innen auf einen Blick</span>
+                        </div>
+                        <ul
+                            id="detailCast"
+                            class="detail-cast"
+                            data-placeholder="{{ url_for('static', filename='images/profile-placeholder.svg') }}"
+                        ></ul>
+                    </section>
+                </div>
+                <aside class="detail-side">
+                    <section class="detail-section">
+                        <h3>Streams</h3>
+                        <div id="detailStreaming" class="detail-streaming"></div>
+                    </section>
+                </aside>
+            </div>
+        </div>
+    </div>
+</section>

@@ -478,43 +478,76 @@ def build_library_context() -> dict:
     }
 
 
-def render_library(active_section: str = "start", film_view: str = "overview"):
-    context = build_library_context()
-    context.update({
-        "active_section": active_section,
-        "film_view": film_view,
-    })
-    return render_template("index.html", **context)
-
-
 @app.route("/")
 def index():
-    return render_library("start")
+    context = build_library_context()
+    return render_template(
+        "start.html",
+        active_page="start",
+        show_detail_panel=True,
+        page_title="Medusa – Startseite",
+        **context,
+    )
 
 
 @app.route("/filme")
 def filme():
-    return render_library("filme")
+    context = build_library_context()
+    return render_template(
+        "filme.html",
+        active_page="filme",
+        show_detail_panel=True,
+        show_all=False,
+        page_title="Medusa – Filme",
+        **context,
+    )
 
 
 @app.route("/filme/alle")
 def filme_all():
-    return render_library("filme", film_view="all")
+    context = build_library_context()
+    return render_template(
+        "filme.html",
+        active_page="filme",
+        show_detail_panel=True,
+        show_all=True,
+        page_title="Medusa – Alle Filme",
+        **context,
+    )
 
 
 @app.route("/serien")
 def serien():
-    return render_library("serien")
+    context = build_library_context()
+    return render_template(
+        "serien.html",
+        active_page="serien",
+        show_detail_panel=True,
+        page_title="Medusa – Serien",
+        **context,
+    )
 
 
 @app.route("/scraper")
 def scraper_view():
-    return render_library("scraper")
+    context = build_library_context()
+    return render_template(
+        "scraper.html",
+        active_page="scraper",
+        show_detail_panel=True,
+        page_title="Medusa – Scraper",
+        **context,
+    )
 
 
 @app.route("/einstellungen")
 def settings_view():
-    return render_library("settings")
+    return render_template(
+        "settings.html",
+        active_page="settings",
+        show_detail_panel=False,
+        page_title="Medusa – Einstellungen",
+    )
 
 
 @app.route("/api/movies")

@@ -140,30 +140,36 @@ async function resetScrapedContent() {
 function initNavigation() {
   const menuItems = Array.from(document.querySelectorAll('[data-section-link]'));
   const panels = Array.from(document.querySelectorAll('[data-section]'));
-  const initialSection = document.body?.dataset?.initialSection || 'start';
+  const initialSection = document.body?.dataset?.currentPage || 'start';
 
   function setSection(name, { scroll = true } = {}) {
     panels.forEach((panel) => {
       const isActive = panel.dataset.section === name;
       panel.classList.toggle('active', isActive);
     });
+
     menuItems.forEach((item) => {
       item.classList.toggle('active', item.dataset.sectionLink === name);
     });
-    if (scroll) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-    currentSectionName = name;
-    document.body.classList.toggle('showing-detail', name === 'detail');
-    if (name === 'detail' && detailPanel) {
-      detailPanel.scrollTop = 0;
-    }
-    if (name !== 'detail') {
+
+    if (name === 'detail') {
+      document.body.classList.add('showing-detail');
+      if (scroll && detailPanel) {
+        detailPanel.scrollTop = 0;
+      }
+    } else {
+      document.body.classList.remove('showing-detail');
+      if (scroll) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      previousSectionName = name;
       closeTrailerModal();
     }
+
+    currentSectionName = name;
   }
 
-  changeSection = (name) => setSection(name);
+  changeSection = (name, options) => setSection(name, options);
 
   menuItems.forEach((item) => {
     if (item.dataset.navigation === 'route') {
@@ -179,7 +185,6 @@ function initNavigation() {
   });
 
   setSection(initialSection, { scroll: false });
-  previousSectionName = initialSection;
 }
 
 function initHero() {
@@ -551,7 +556,8 @@ function resetDetailView() {
 function closeDetail() {
   if (!detailPanel) return;
   resetDetailView();
-  changeSection(previousSectionName || 'start');
+  const fallbackSection = document.body?.dataset?.currentPage || 'start';
+  changeSection(previousSectionName || fallbackSection);
   previousSectionName = currentSectionName;
 }
 

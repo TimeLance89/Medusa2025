@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}{{ page_title or 'Medusa – Startseite' }}{% endblock %}
+
+{% block main %}
+<section class="panel hero-panel" id="hero">
+    <div class="hero-content">
+        <span class="hero-eyebrow">Deine private Streaming-Oase</span>
+        <h2>Entdecke deine Mediathek</h2>
+        <p>Medusa kombiniert die Eleganz von Premium-Streaming mit der Flexibilität deiner eigenen Sammlung. Synchronisiere Inhalte von TMDB und erweitere deine Bibliothek im Handumdrehen.</p>
+        <div class="hero-actions">
+            <button class="btn btn-primary" id="refreshHero" type="button">Zufälliger Film</button>
+            <a class="btn btn-outline" href="{{ url_for('filme') }}">Zu den Filmen</a>
+        </div>
+    </div>
+</section>
+
+{% for name, movies in categories.items() %}
+<section class="panel carousel">
+    <div class="section-header">
+        <div>
+            <h3>{{ name }}</h3>
+            <span class="section-hint">Handverlesene Highlights</span>
+        </div>
+        <a class="section-link" href="{{ url_for('filme') }}">Alle Filme</a>
+    </div>
+    {% if movies %}
+    <div class="carousel-track">
+        {% for movie in movies %}
+        {% set poster_url = movie.poster_path and "https://image.tmdb.org/t/p/w500" + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+        {% set backdrop_url = movie.backdrop_path and "https://image.tmdb.org/t/p/w780" + movie.backdrop_path or '' %}
+        <article class="card" role="button" tabindex="0"
+                 data-movie-id="{{ movie.id }}"
+                 data-title="{{ movie.title }}"
+                 data-overview="{{ movie.overview|default('')|e }}"
+                 data-backdrop="{{ backdrop_url }}"
+                 data-poster="{{ poster_url }}"
+                 data-release="{{ movie.release_date or '' }}">
+            <div class="card-poster" style="background-image: url('{{ poster_url }}');"></div>
+            <div class="card-overlay">
+                <h4>{{ movie.title }}</h4>
+                <p>{{ movie.release_date or 'Unbekannt' }}</p>
+                <span class="rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">Noch keine Inhalte in dieser Kategorie.</p>
+    {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

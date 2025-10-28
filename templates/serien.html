@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}{{ page_title or 'Medusa – Serien' }}{% endblock %}
+
+{% block main %}
+<section class="panel page-intro">
+    <div>
+        <h2>Serien</h2>
+        <p class="panel-subtitle">Serien werden hier gesammelt, sobald du sie synchronisiert hast.</p>
+    </div>
+</section>
+
+{% if series_sections %}
+    {% for section in series_sections %}
+    <section class="panel carousel">
+        <div class="section-header">
+            <div>
+                <h3>{{ section.title }}</h3>
+                <span class="section-hint">Serienübersicht</span>
+            </div>
+        </div>
+        {% if section['items'] %}
+        <div class="carousel-track">
+            {% for show in section['items'] %}
+            {% set poster_url = show.poster_path and "https://image.tmdb.org/t/p/w500" + show.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+            {% set backdrop_url = show.backdrop_path and "https://image.tmdb.org/t/p/w780" + show.backdrop_path or '' %}
+            <article class="card" role="button" tabindex="0"
+                     data-movie-id="{{ show.id }}"
+                     data-title="{{ show.title }}"
+                     data-overview="{{ show.overview|default('')|e }}"
+                     data-backdrop="{{ backdrop_url }}"
+                     data-poster="{{ poster_url }}"
+                     data-release="{{ show.release_date or '' }}">
+                <div class="card-poster" style="background-image: url('{{ poster_url }}');"></div>
+                <div class="card-overlay">
+                    <h4>{{ show.title }}</h4>
+                    <p>{{ show.release_date or 'Unbekannt' }}</p>
+                    <span class="rating">⭐ {{ (show.rating or 0)|round(1) }}</span>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">Diese Kategorie enthält noch keine Serien.</p>
+        {% endif %}
+    </section>
+    {% endfor %}
+{% else %}
+<section class="panel">
+    <p class="empty large">Noch keine Serien synchronisiert.</p>
+</section>
+{% endif %}
+{% endblock %}
