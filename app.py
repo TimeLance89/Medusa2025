@@ -699,14 +699,45 @@ def filme():
 
 @app.route("/filme/alle")
 def filme_all():
-    context = build_library_context()
+    total_movies = Movie.query.count()
+    average_rating_value = db.session.query(func.avg(Movie.rating)).scalar()
+    average_rating = (
+        round(float(average_rating_value), 1) if average_rating_value is not None else None
+    )
+    linked_movies_count = (
+        db.session.query(func.count(func.distinct(StreamingLink.movie_id))).scalar() or 0
+    )
+
+    latest_movie = Movie.query.order_by(Movie.created_at.desc()).first()
+    latest_movie_added = (
+        latest_movie.created_at.strftime("%d.%m.%Y")
+        if latest_movie and latest_movie.created_at
+        else None
+    )
+
+    highlight_movie = (
+        Movie.query.order_by(Movie.rating.desc().nullslast(), Movie.created_at.desc()).first()
+    )
+    if highlight_movie:
+        highlight_image = build_tmdb_image(highlight_movie.backdrop_path, "w780") or build_tmdb_image(
+            highlight_movie.poster_path
+        )
+    else:
+        highlight_image = None
+
     return render_template(
-        "filme.html",
+        "filme_all.html",
         active_page="filme",
         show_detail_panel=True,
-        show_all=True,
+        load_all_movies=True,
         page_title="Medusa – Alle Filme",
-        **context,
+        total_movies=total_movies,
+        average_rating=average_rating,
+        linked_movies_count=linked_movies_count,
+        latest_movie=latest_movie,
+        latest_movie_added=latest_movie_added,
+        highlight_movie=highlight_movie,
+        highlight_image=highlight_image,
     )
 
 

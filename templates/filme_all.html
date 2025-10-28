@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}{{ page_title or 'Medusa – Alle Filme' }}{% endblock %}
+
+{% block main %}
+<section class="surface collection-hero">
+    <div class="collection-hero__content">
+        <span class="chip chip--accent">Gesamte Bibliothek</span>
+        <h1 class="collection-hero__title">Alle Filme</h1>
+        <p class="collection-hero__subtitle">
+            Durchstöbere deine komplette Filmsammlung in einer eigenständigen Ansicht.
+            Eine moderne Rasterübersicht, kuratierte Highlights und umfangreiche Detailinformationen helfen dir, den perfekten Film zu finden.
+        </p>
+        <div class="collection-hero__stats">
+            <div class="collection-stat">
+                <span class="collection-stat__label">Titel insgesamt</span>
+                <span class="collection-stat__value">{{ total_movies }}</span>
+            </div>
+            <div class="collection-stat">
+                <span class="collection-stat__label">Ø Bewertung</span>
+                <span class="collection-stat__value">{{ average_rating if average_rating is not none else '–' }}</span>
+            </div>
+            <div class="collection-stat">
+                <span class="collection-stat__label">Mit Streams</span>
+                <span class="collection-stat__value">{{ linked_movies_count }}</span>
+            </div>
+            {% if latest_movie %}
+            <div class="collection-stat collection-stat--highlight">
+                <span class="collection-stat__label">Zuletzt hinzugefügt</span>
+                <span class="collection-stat__value">{{ latest_movie.title }}</span>
+                {% if latest_movie_added %}
+                <span class="collection-stat__meta">am {{ latest_movie_added }}</span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% if highlight_movie %}
+    <div class="collection-hero__preview">
+        <div class="collection-preview-card">
+            <div
+                class="collection-preview-card__media"
+                style="{% if highlight_image %}background-image: url('{{ highlight_image }}');{% endif %}"
+            ></div>
+            <div class="collection-preview-card__overlay">
+                <span class="collection-preview-card__label">Top bewertet</span>
+                <h2 class="collection-preview-card__title">{{ highlight_movie.title }}</h2>
+                {% if highlight_movie.rating is not none %}
+                <span class="collection-preview-card__rating">⭐ {{ highlight_movie.rating|round(1) }}</span>
+                {% endif %}
+                {% if highlight_movie.overview %}
+                <p class="collection-preview-card__text">{{ highlight_movie.overview[:140] ~ ('…' if highlight_movie.overview|length > 140 else '') }}</p>
+                {% endif %}
+                <button
+                    class="chip chip--light view-detail"
+                    type="button"
+                    data-movie-id="{{ highlight_movie.id }}"
+                    data-navigation="detail"
+                >
+                    <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                    <span>Details öffnen</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+<section class="surface collection-toolbar">
+    <div class="collection-toolbar__filters">
+        <button class="chip chip--ghost is-active" type="button" disabled>
+            <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
+            <span>Alle Filme</span>
+        </button>
+        <a href="{{ url_for('filme') }}" class="chip chip--ghost" data-navigation="route">
+            <span class="material-symbols-outlined" aria-hidden="true">sparkles</span>
+            <span>Highlights</span>
+        </a>
+    </div>
+    <div class="collection-toolbar__meta">
+        <span class="collection-toolbar__count">{{ total_movies }} Titel verfügbar</span>
+    </div>
+</section>
+
+<section class="surface collection-all">
+    <header class="collection-all__head">
+        <div>
+            <h2>Bibliotheksübersicht</h2>
+            <p class="section-subtitle">Blättere seitenweise durch deine komplette Filmsammlung.</p>
+        </div>
+        <div class="detail-pagination">
+            <button type="button" id="detailAllPrev" class="rail-button" aria-label="Vorherige Seite">
+                <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+            <span id="detailAllPageLabel" class="detail-page-label"></span>
+            <button type="button" id="detailAllNext" class="rail-button" aria-label="Nächste Seite">
+                <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+        </div>
+    </header>
+    <div id="detailAllMovies" class="detail-grid collection-all__grid"></div>
+</section>
+{% endblock %}

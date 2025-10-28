@@ -8,17 +8,10 @@
         <p class="section-subtitle">Alle Filme deiner Bibliothek in einem modernen Grid – inspiriert von den besten Streaming-UIs.</p>
     </div>
     <div class="page-header__actions">
-        {% if show_all %}
-        <a href="{{ url_for('filme') }}" class="chip" data-navigation="route">
-            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
-            <span>Zur Übersicht</span>
-        </a>
-        {% else %}
         <a href="{{ url_for('filme_all') }}" class="chip" data-navigation="route">
             <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
             <span>Alle Filme</span>
         </a>
-        {% endif %}
     </div>
 </section>
 
@@ -69,20 +62,4 @@
 </section>
 {% endif %}
 
-{% if show_all %}
-<section class="surface detail-all">
-    <header class="section-head">
-        <div>
-            <h2>Alle Filme</h2>
-            <p class="section-subtitle">Komplette Übersicht deiner Bibliothek</p>
-        </div>
-        <div class="detail-pagination">
-            <button type="button" id="detailAllPrev" class="rail-button" aria-label="Vorherige Seite"><span class="material-symbols-outlined">chevron_left</span></button>
-            <span id="detailAllPageLabel" class="detail-page-label"></span>
-            <button type="button" id="detailAllNext" class="rail-button" aria-label="Nächste Seite"><span class="material-symbols-outlined">chevron_right</span></button>
-        </div>
-    </header>
-    <div id="detailAllMovies" class="detail-grid"></div>
-</section>
-{% endif %}
 {% endblock %}

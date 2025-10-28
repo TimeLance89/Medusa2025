@@ -16,7 +16,7 @@
     />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
 </head>
-<body data-current-page="{{ active_page|default('start') }}">
+<body data-current-page="{{ active_page|default('start') }}" data-load-all-movies="{{ 'true' if load_all_movies|default(False) else 'false' }}">
     <div class="page-shell">
         <header class="topbar">
             <div class="topbar__brand">
