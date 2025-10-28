@@ -444,8 +444,7 @@ def attach_streaming_link(movie_title: str, streaming_url: str, mirror_info: Opt
     return link
 
 
-@app.route("/")
-def index():
+def build_library_context() -> dict:
     popular_movies = Movie.query.order_by(Movie.rating.desc().nullslast()).limit(20).all()
     recent_movies = Movie.query.order_by(Movie.created_at.desc()).limit(20).all()
     linked_movies = (
@@ -469,15 +468,53 @@ def index():
         film_sections.append({"title": "Mit Streaming Links", "items": linked_movies})
 
     series_sections: List[dict] = []
-
     scraped = StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
-    return render_template(
-        "index.html",
-        categories=categories,
-        film_sections=film_sections,
-        series_sections=series_sections,
-        scraped=scraped,
-    )
+
+    return {
+        "categories": categories,
+        "film_sections": film_sections,
+        "series_sections": series_sections,
+        "scraped": scraped,
+    }
+
+
+def render_library(active_section: str = "start", film_view: str = "overview"):
+    context = build_library_context()
+    context.update({
+        "active_section": active_section,
+        "film_view": film_view,
+    })
+    return render_template("index.html", **context)
+
+
+@app.route("/")
+def index():
+    return render_library("start")
+
+
+@app.route("/filme")
+def filme():
+    return render_library("filme")
+
+
+@app.route("/filme/alle")
+def filme_all():
+    return render_library("filme", film_view="all")
+
+
+@app.route("/serien")
+def serien():
+    return render_library("serien")
+
+
+@app.route("/scraper")
+def scraper_view():
+    return render_library("scraper")
+
+
+@app.route("/einstellungen")
+def settings_view():
+    return render_library("settings")
 
 
 @app.route("/api/movies")
