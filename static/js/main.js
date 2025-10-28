@@ -1300,13 +1300,14 @@ function populateDetail(movie) {
       frame.referrerPolicy = 'no-referrer';
       frame.title = `${header.textContent} – Stream ${index + 1}`;
       frame.setAttribute('allow', 'fullscreen; picture-in-picture');
+      frame.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-pointer-lock allow-fullscreen');
 
       const fallback = document.createElement('a');
       fallback.classList.add('stream-embed__link');
       fallback.href = link.url;
-      fallback.target = '_blank';
+      fallback.target = '_self';
       fallback.rel = 'noopener';
-      fallback.textContent = 'Im neuen Tab öffnen';
+      fallback.textContent = 'Im selben Tab öffnen';
 
       wrapper.appendChild(header);
       wrapper.appendChild(frame);
