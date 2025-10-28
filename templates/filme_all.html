@@ -76,8 +76,30 @@
             <span>Highlights</span>
         </a>
     </div>
-    <div class="collection-toolbar__meta">
-        <span class="collection-toolbar__count">{{ total_movies }} Titel verfügbar</span>
+    <div class="collection-toolbar__actions">
+        <div class="collection-toolbar__meta">
+            <span class="collection-toolbar__count">{{ total_movies }} Titel verfügbar</span>
+        </div>
+        <div class="collection-toolbar__sort" role="group" aria-label="Sortieren nach">
+            <span class="collection-toolbar__sort-label">Sortieren nach:</span>
+            <div class="collection-toolbar__sort-options">
+                <button type="button" class="chip chip--ghost is-active" data-sort-option="popular" data-sort-direction="desc">
+                    Beliebtheit
+                </button>
+                <button type="button" class="chip chip--ghost" data-sort-option="added" data-sort-direction="desc">
+                    Neu hinzugefügt
+                </button>
+                <button type="button" class="chip chip--ghost" data-sort-option="release" data-sort-direction="desc">
+                    Erscheinungsjahr
+                </button>
+                <button type="button" class="chip chip--ghost" data-sort-option="title" data-sort-direction="asc">
+                    Titel A–Z
+                </button>
+                <button type="button" class="chip chip--ghost" data-sort-option="runtime" data-sort-direction="desc">
+                    Länge
+                </button>
+            </div>
+        </div>
     </div>
 </section>
 

@@ -2,37 +2,111 @@
 {% block title %}{{ page_title or 'Medusa – Startseite' }}{% endblock %}
 
 {% block main %}
-{% set hero_movie = None %}
-{% for movies in categories.values() %}
-    {% if movies and not hero_movie %}
-        {% set hero_movie = movies[0] %}
+{% set hero_movies = hero_movies or [] %}
+{% if not hero_movies %}
+    {% set hero_movie = None %}
+    {% for movies in categories.values() %}
+        {% if movies and not hero_movie %}
+            {% set hero_movie = movies[0] %}
+        {% endif %}
+    {% endfor %}
+    {% if hero_movie %}
+        {% set hero_movies = [hero_movie] %}
     {% endif %}
-{% endfor %}
-{% set hero_backdrop = hero_movie and hero_movie.backdrop_path and 'https://image.tmdb.org/t/p/original' + hero_movie.backdrop_path or '' %}
-{% set hero_poster = hero_movie and hero_movie.poster_path and 'https://image.tmdb.org/t/p/w500' + hero_movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
-{% set hero_overview = hero_movie and hero_movie.overview or 'Synchronisiere deine Bibliothek mit TMDB, durchstöbere Sammlungen und starte Streams aus einer eleganten Oberfläche.' %}
+{% endif %}
+{% set hero_first = hero_movies and hero_movies[0] or None %}
+{% set hero_backdrop = hero_first and hero_first.backdrop_path and 'https://image.tmdb.org/t/p/original' + hero_first.backdrop_path or '' %}
+{% set hero_poster = hero_first and hero_first.poster_path and 'https://image.tmdb.org/t/p/w500' + hero_first.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+{% set hero_overview = hero_first and hero_first.overview or 'Synchronisiere deine Bibliothek mit TMDB, durchstöbere Sammlungen und starte Streams aus einer eleganten Oberfläche.' %}
+{% set hero_title = hero_first and hero_first.title or 'Willkommen bei Medusa' %}
+{% set hero_movie_id = hero_first and hero_first.id %}
 
-<section class="surface hero" id="hero"{% if hero_backdrop %} style="--hero-image: url('{{ hero_backdrop }}');"{% endif %}>
+{% set hero_payload = namespace(items=[]) %}
+{% for movie in hero_movies %}
+    {% set poster_url = movie.poster_path and 'https://image.tmdb.org/t/p/w500' + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+    {% set backdrop_url = movie.backdrop_path and 'https://image.tmdb.org/t/p/original' + movie.backdrop_path or movie.poster_path and 'https://image.tmdb.org/t/p/w1280' + movie.poster_path or poster_url %}
+    {% set _ = hero_payload.items.append({
+        'id': movie.id,
+        'title': movie.title,
+        'overview': movie.overview or '',
+        'poster': poster_url,
+        'backdrop': backdrop_url,
+        'rating': movie.rating,
+        'release_date': movie.release_date
+    }) %}
+{% endfor %}
+
+<section class="surface hero" id="hero"{% if hero_backdrop %} style="--hero-image: url('{{ hero_backdrop }}');"{% endif %}{% if hero_movies %} data-hero-total="{{ hero_movies|length }}"{% endif %}>
     <div class="hero__backdrop"></div>
     <div class="hero__content">
-        <div class="hero__pretitle">Weiter schauen</div>
-        <h1 class="hero__title">{{ hero_movie.title if hero_movie else 'Willkommen bei Medusa' }}</h1>
+        <div class="hero__pretitle">{{ hero_movies|length > 0 and 'Beliebt in deiner Bibliothek' or 'Weiter schauen' }}</div>
+        <h1 class="hero__title">{{ hero_title }}</h1>
         <p class="hero__description">{{ hero_overview }}</p>
+        <div class="hero__meta"></div>
         <div class="hero__actions">
-            <button class="btn btn-primary" id="detailHeroPlay" type="button"{% if hero_movie %} data-movie-id="{{ hero_movie.id }}"{% else %} disabled{% endif %}>
+            <button class="btn btn-primary" id="detailHeroPlay" type="button"{% if hero_movie_id %} data-movie-id="{{ hero_movie_id }}"{% else %} disabled{% endif %}>
                 <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
                 <span>Wiedergabe starten</span>
             </button>
-            <button class="btn btn-ghost" id="refreshHero" type="button"{% if not hero_movie %} disabled{% endif %}>
-                <span class="material-symbols-outlined" aria-hidden="true">shuffle</span>
-                <span>Zufälliger Titel</span>
+            <button class="btn btn-ghost" id="refreshHero" type="button"{% if not hero_movies %} disabled{% endif %}>
+                <span class="material-symbols-outlined" aria-hidden="true">skip_next</span>
+                <span>Nächster Titel</span>
             </button>
         </div>
+        {% if hero_movies|length > 1 %}
+        <div class="hero__controls" role="group" aria-label="Hero Banner Steuerung">
+            <button class="hero__control" type="button" data-hero-prev aria-label="Vorheriger Titel">
+                <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+            </button>
+            <div class="hero__indicators" aria-hidden="true"></div>
+            <button class="hero__control" type="button" data-hero-next aria-label="Nächster Titel">
+                <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+            </button>
+        </div>
+        {% endif %}
     </div>
     <div class="hero__poster">
         <div class="hero__poster-image" style="background-image: url('{{ hero_poster }}');"></div>
     </div>
+    {% if hero_payload.items %}
+    <script id="heroData" type="application/json">{{ hero_payload.items|tojson }}</script>
+    {% endif %}
 </section>
+
+{% if now_playing_movies %}
+<section class="surface media-rail media-rail--highlight" data-rail>
+    <header class="section-head">
+        <div>
+            <h2>Aktuell im Kino</h2>
+            <p class="section-subtitle">Beliebte Kinofilme, die bereits in deiner Bibliothek verfügbar sind</p>
+        </div>
+        <div class="rail-controls">
+            <button type="button" class="rail-button" data-rail-prev aria-label="Zurück"><span class="material-symbols-outlined">chevron_left</span></button>
+            <button type="button" class="rail-button" data-rail-next aria-label="Weiter"><span class="material-symbols-outlined">chevron_right</span></button>
+        </div>
+    </header>
+    <div class="media-rail__track" data-rail-track>
+        {% for movie in now_playing_movies %}
+        {% set poster_url = movie.poster_path and 'https://image.tmdb.org/t/p/w500' + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+        {% set backdrop_url = movie.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + movie.backdrop_path or '' %}
+        <article class="media-card" role="button" tabindex="0"
+                 data-movie-id="{{ movie.id }}"
+                 data-title="{{ movie.title }}"
+                 data-overview="{{ movie.overview|default('')|e }}"
+                 data-backdrop="{{ backdrop_url }}"
+                 data-poster="{{ poster_url }}"
+                 data-release="{{ movie.release_date or '' }}">
+            <div class="media-card__poster" style="background-image: url('{{ poster_url }}');"></div>
+            <div class="media-card__overlay">
+                <h3 class="media-card__title">{{ movie.title }}</h3>
+                <p class="media-card__meta">{{ movie.release_date or 'Unbekannt' }}</p>
+                <span class="media-card__badge">Im Kino</span>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
 
 <section class="surface media-promos">
     <header class="section-head">

@@ -9,7 +9,7 @@ from typing import List, Optional, Set, Tuple
 import requests
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.engine import make_url
 
 from scrapers.kinox import scrape_page as scrape_kinox_page
@@ -46,6 +46,10 @@ SCRAPER_STATUS = {
 SCRAPER_THREAD: Optional[Thread] = None
 
 
+MOVIE_RUNTIME_CACHE: dict[int, Optional[int]] = {}
+MOVIE_RUNTIME_CACHE_LOCK = Lock()
+
+
 class Movie(db.Model):
     __tablename__ = "movies"
 
@@ -76,6 +80,7 @@ class Movie(db.Model):
             "backdrop_path": self.backdrop_path,
             "release_date": self.release_date,
             "rating": self.rating,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
             "streaming_links": [link.to_dict() for link in self.streaming_links],
         }
 
@@ -678,11 +683,36 @@ def build_library_context() -> dict:
     series_sections: List[dict] = []
     scraped = StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
 
+    hero_movies = popular_movies[:5]
+
+    now_playing_movies: List[Movie] = []
+    try:
+        now_playing_payload = fetch_tmdb_movies("now_playing")
+    except Exception as exc:  # pragma: no cover - network errors
+        app.logger.warning("Failed to load TMDB now playing titles: %s", exc)
+    else:
+        tmdb_ids = [entry.get("id") for entry in now_playing_payload if isinstance(entry.get("id"), int)]
+        if tmdb_ids:
+            order_mapping = {tmdb_id: index for index, tmdb_id in enumerate(tmdb_ids)}
+            order_case = case(
+                value=Movie.tmdb_id,
+                whens={tmdb_id: position for tmdb_id, position in order_mapping.items()},
+            )
+            now_playing_movies = (
+                Movie.query.filter(valid_filter, Movie.tmdb_id.in_(tmdb_ids))
+                .order_by(order_case)
+                .limit(20)
+                .all()
+            )
+            now_playing_movies.sort(key=lambda movie: order_mapping.get(movie.tmdb_id, len(order_mapping)))
+
     return {
         "categories": categories,
         "film_sections": film_sections,
         "series_sections": series_sections,
         "scraped": scraped,
+        "hero_movies": hero_movies,
+        "now_playing_movies": now_playing_movies,
     }
 
 
@@ -805,6 +835,49 @@ def api_movies():
         .all()
     )
     return jsonify([movie.to_dict() for movie in movies])
+
+
+def _get_movie_runtime(movie: Movie) -> Optional[int]:
+    tmdb_id = movie.tmdb_id
+    if not tmdb_id:
+        return None
+    with MOVIE_RUNTIME_CACHE_LOCK:
+        if tmdb_id in MOVIE_RUNTIME_CACHE:
+            return MOVIE_RUNTIME_CACHE[tmdb_id]
+    details = fetch_tmdb_details(tmdb_id)
+    runtime = details.get("runtime") if isinstance(details, dict) else None
+    with MOVIE_RUNTIME_CACHE_LOCK:
+        MOVIE_RUNTIME_CACHE[tmdb_id] = runtime
+    return runtime
+
+
+@app.route("/api/movies/runtime", methods=["POST"])
+def api_movies_runtime():
+    payload = request.get_json(silent=True) or {}
+    movie_ids = payload.get("movie_ids")
+    if not isinstance(movie_ids, list):
+        return jsonify({"success": False, "message": "movie_ids must be provided as a list."}), 400
+
+    try:
+        normalized_ids = {int(movie_id) for movie_id in movie_ids}
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid movie id provided."}), 400
+
+    if not normalized_ids:
+        return jsonify({"success": True, "items": []})
+
+    movies = (
+        Movie.query.filter(movie_has_valid_streaming_link(), Movie.id.in_(normalized_ids))
+        .order_by(Movie.id.asc())
+        .all()
+    )
+
+    items = []
+    for movie in movies:
+        runtime = _get_movie_runtime(movie)
+        items.append({"id": movie.id, "runtime": runtime})
+
+    return jsonify({"success": True, "items": items})
 
 
 def _escape_search_query(raw_query: str) -> str:
