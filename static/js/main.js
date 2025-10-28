@@ -24,6 +24,9 @@ const trailerModalClose = trailerModal?.querySelector('.modal-close');
 const trailerModalBackdrop = trailerModal?.querySelector('.modal-backdrop');
 const watchButtonLabel = document.getElementById('detailWatchLabel');
 const watchButtonDefaultLabel = watchButtonLabel?.textContent || 'Ansehen';
+const heroSection = document.getElementById('hero');
+const heroPosterImage = heroSection?.querySelector('.hero__poster-image');
+const heroPlayButton = document.getElementById('detailHeroPlay');
 const ALL_MOVIES_PAGE_SIZE = 25;
 
 let changeSection = () => {};
@@ -138,75 +141,78 @@ async function resetScrapedContent() {
 }
 
 function initNavigation() {
-  const menuItems = Array.from(document.querySelectorAll('[data-section-link]'));
-  const panels = Array.from(document.querySelectorAll('[data-section]'));
   const initialSection = document.body?.dataset?.currentPage || 'start';
+  currentSectionName = initialSection;
+  previousSectionName = initialSection;
 
-  function setSection(name, { scroll = true } = {}) {
-    panels.forEach((panel) => {
-      const isActive = panel.dataset.section === name;
-      panel.classList.toggle('active', isActive);
-    });
-
-    menuItems.forEach((item) => {
-      item.classList.toggle('active', item.dataset.sectionLink === name);
-    });
-
-    if (name === 'detail') {
-      document.body.classList.add('showing-detail');
-      if (scroll && detailPanel) {
-        detailPanel.scrollTop = 0;
-      }
-    } else {
-      document.body.classList.remove('showing-detail');
-      if (scroll) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-      previousSectionName = name;
-      closeTrailerModal();
-    }
-
-    currentSectionName = name;
-  }
-
-  changeSection = (name, options) => setSection(name, options);
-
-  menuItems.forEach((item) => {
-    if (item.dataset.navigation === 'route') {
+  changeSection = (name, { scroll = true } = {}) => {
+    if (!detailPanel) {
+      currentSectionName = name;
       return;
     }
-    item.addEventListener('click', (event) => {
-      event.preventDefault();
-      const target = item.dataset.sectionLink;
-      if (target) {
-        setSection(target);
-      }
-    });
-  });
 
-  setSection(initialSection, { scroll: false });
+    if (name === 'detail') {
+      detailPanel.classList.add('is-active');
+      document.body.classList.add('showing-detail');
+      if (scroll) {
+        detailPanel.scrollTop = 0;
+      }
+      currentSectionName = 'detail';
+      return;
+    }
+
+    detailPanel.classList.remove('is-active');
+    document.body.classList.remove('showing-detail');
+    if (scroll) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    closeTrailerModal();
+    currentSectionName = name;
+  };
 }
 
 function initHero() {
-  const hero = document.getElementById('hero');
-  const cards = Array.from(document.querySelectorAll('[data-section="start"] .card[data-movie-id]'));
-  if (!hero || !cards.length) return;
+  if (!heroSection || document.body?.dataset?.currentPage !== 'start') {
+    return;
+  }
 
-  const heroTitle = hero.querySelector('h2');
-  const heroDescription = hero.querySelector('p');
+  const cards = Array.from(document.querySelectorAll('.media-card[data-movie-id]'));
+  if (!cards.length) {
+    return;
+  }
+
+  const heroTitle = heroSection.querySelector('.hero__title');
+  const heroDescription = heroSection.querySelector('.hero__description');
+  const refreshButton = document.getElementById('refreshHero');
 
   function setHero(card) {
     const title = card.dataset.title || 'Unbekannter Titel';
     const overview = card.dataset.overview || 'Keine Beschreibung verfügbar.';
     const backdrop = card.dataset.backdrop || card.dataset.poster || '';
+    const poster = card.dataset.poster || '';
     const text = overview.length > 280 ? `${overview.slice(0, 277)}…` : overview;
 
-    hero.style.setProperty('--hero-image', backdrop ? `url('${backdrop}')` : "url('')");
-    heroTitle.textContent = title;
-    heroDescription.textContent = text;
+    if (backdrop) {
+      heroSection.style.setProperty('--hero-image', `url('${backdrop}')`);
+    } else {
+      heroSection.style.removeProperty('--hero-image');
+    }
+    if (heroTitle) {
+      heroTitle.textContent = title;
+    }
+    if (heroDescription) {
+      heroDescription.textContent = text;
+    }
+    if (heroPosterImage) {
+      heroPosterImage.style.backgroundImage = poster ? `url('${poster}')` : '';
+    }
+    if (heroPlayButton) {
+      heroPlayButton.dataset.movieId = card.dataset.movieId || '';
+      heroPlayButton.disabled = !card.dataset.movieId;
+    }
   }
 
-  document.getElementById('refreshHero')?.addEventListener('click', () => {
+  refreshButton?.addEventListener('click', () => {
     const randomCard = cards[Math.floor(Math.random() * cards.length)];
     if (randomCard) {
       setHero(randomCard);
@@ -214,6 +220,39 @@ function initHero() {
   });
 
   setHero(cards[0]);
+}
+
+function initMediaRails() {
+  const rails = Array.from(document.querySelectorAll('[data-rail]'));
+  rails.forEach((rail) => {
+    const track = rail.querySelector('[data-rail-track]');
+    if (!track) {
+      return;
+    }
+
+    const prev = rail.querySelector('[data-rail-prev]');
+    const next = rail.querySelector('[data-rail-next]');
+
+    const update = () => {
+      const maxScroll = track.scrollWidth - track.clientWidth;
+      if (prev) {
+        prev.disabled = track.scrollLeft <= 4;
+      }
+      if (next) {
+        next.disabled = track.scrollLeft >= maxScroll - 4;
+      }
+    };
+
+    prev?.addEventListener('click', () => {
+      track.scrollBy({ left: -track.clientWidth * 0.8, behavior: 'smooth' });
+    });
+    next?.addEventListener('click', () => {
+      track.scrollBy({ left: track.clientWidth * 0.8, behavior: 'smooth' });
+    });
+
+    track.addEventListener('scroll', update, { passive: true });
+    update();
+  });
 }
 
 function bindButtons() {
@@ -279,7 +318,7 @@ async function saveSettings(event) {
 
 function bindContentCards() {
   const triggers = document.querySelectorAll(
-    '.card[data-movie-id], .view-detail[data-movie-id], .scraper-card[data-movie-id], .detail-all-card[data-movie-id]'
+    '.media-card[data-movie-id], .card[data-movie-id], .view-detail[data-movie-id], .scraper-card[data-movie-id], .detail-all-card[data-movie-id]'
   );
 
   triggers.forEach((element) => {
@@ -302,6 +341,7 @@ function bindContentCards() {
     element.addEventListener('click', activate);
 
     if (
+      element.classList.contains('media-card') ||
       element.classList.contains('card') ||
       element.classList.contains('scraper-card') ||
       element.classList.contains('detail-all-card')
@@ -557,8 +597,10 @@ function closeDetail() {
   if (!detailPanel) return;
   resetDetailView();
   const fallbackSection = document.body?.dataset?.currentPage || 'start';
-  changeSection(previousSectionName || fallbackSection);
-  previousSectionName = currentSectionName;
+  const target = previousSectionName && previousSectionName !== 'detail' ? previousSectionName : fallbackSection;
+  changeSection(target);
+  previousSectionName = target;
+  currentSectionName = target;
 }
 
 function showDetailLoadingState() {
@@ -617,6 +659,12 @@ trailerModalClose?.addEventListener('click', closeTrailerModal);
 trailerModalBackdrop?.addEventListener('click', closeTrailerModal);
 detailAllPrev?.addEventListener('click', () => changeAllMoviesPage(-1));
 detailAllNext?.addEventListener('click', () => changeAllMoviesPage(1));
+heroPlayButton?.addEventListener('click', () => {
+  const movieId = heroPlayButton.dataset.movieId;
+  if (movieId) {
+    openMovieDetail(movieId);
+  }
+});
 
 async function openMovieDetail(movieId) {
   try {
@@ -918,6 +966,7 @@ function populateDetail(movie) {
 bindButtons();
 initNavigation();
 bindContentCards();
+initMediaRails();
 initHero();
 loadSettings();
 if (document.body?.dataset?.loadAllMovies === 'true') {
