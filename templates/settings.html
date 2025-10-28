@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}{{ page_title or 'Medusa – Einstellungen' }}{% endblock %}
+
+{% block main %}
+<section class="panel page-intro">
+    <div>
+        <h2>Einstellungen</h2>
+        <p class="panel-subtitle">Verwalte Schlüssel und Scraper-Einstellungen.</p>
+    </div>
+</section>
+
+<section class="panel">
+    <form id="settingsForm" class="settings-form">
+        <div class="form-grid">
+            <label class="form-field">
+                <span class="form-label">TMDB API Key</span>
+                <input type="text" name="tmdb_api_key" placeholder="z.B. 123abc" required />
+                <span class="form-hint">Wird für die Synchronisation von TMDB benötigt.</span>
+            </label>
+            <label class="form-field">
+                <span class="form-label">Kinox Startseite</span>
+                <input type="number" min="1" name="kinox_start_page" />
+                <span class="form-hint">Erste Seite für den Scraper.</span>
+            </label>
+            <label class="form-field">
+                <span class="form-label">Kinox Endseite</span>
+                <input type="number" min="1" name="kinox_end_page" />
+                <span class="form-hint">Letzte Seite für den Scraper.</span>
+            </label>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Einstellungen speichern</button>
+        </div>
+    </form>
+</section>
+
+<section class="panel settings-reset">
+    <div>
+        <h3>Scraper zurücksetzen</h3>
+        <p class="panel-subtitle">Lösche alle gescrapten Inhalte und beginne erneut.</p>
+    </div>
+    <button type="button" id="resetScraped" class="btn btn-secondary">Gescrapte Inhalte löschen</button>
+</section>
+{% endblock %}
