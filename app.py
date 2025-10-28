@@ -108,6 +108,10 @@ class Setting(db.Model):
     value = db.Column(db.String(255), nullable=False)
 
 
+def movie_has_valid_streaming_link():
+    return Movie.streaming_links.any(func.length(func.trim(StreamingLink.url)) > 0)
+
+
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
     setting = Setting.query.filter_by(key=key).first()
     if setting is None:
@@ -639,12 +643,22 @@ def _run_kinox_scraper(start_page: int) -> None:
 
 
 def build_library_context() -> dict:
-    popular_movies = Movie.query.order_by(Movie.rating.desc().nullslast()).limit(20).all()
-    recent_movies = Movie.query.order_by(Movie.created_at.desc()).limit(20).all()
+    valid_filter = movie_has_valid_streaming_link()
+    popular_movies = (
+        Movie.query.filter(valid_filter)
+        .order_by(Movie.rating.desc().nullslast())
+        .limit(20)
+        .all()
+    )
+    recent_movies = (
+        Movie.query.filter(valid_filter)
+        .order_by(Movie.created_at.desc())
+        .limit(20)
+        .all()
+    )
     linked_movies = (
-        Movie.query.join(StreamingLink)
+        Movie.query.filter(valid_filter)
         .order_by(Movie.title.asc())
-        .distinct()
         .limit(20)
         .all()
     )
@@ -699,16 +713,17 @@ def filme():
 
 @app.route("/filme/alle")
 def filme_all():
-    total_movies = Movie.query.count()
-    average_rating_value = db.session.query(func.avg(Movie.rating)).scalar()
+    valid_filter = movie_has_valid_streaming_link()
+    total_movies = Movie.query.filter(valid_filter).count()
+    average_rating_value = db.session.query(func.avg(Movie.rating)).filter(valid_filter).scalar()
     average_rating = (
         round(float(average_rating_value), 1) if average_rating_value is not None else None
     )
-    linked_movies_count = (
-        db.session.query(func.count(func.distinct(StreamingLink.movie_id))).scalar() or 0
-    )
+    linked_movies_count = total_movies
 
-    latest_movie = Movie.query.order_by(Movie.created_at.desc()).first()
+    latest_movie = (
+        Movie.query.filter(valid_filter).order_by(Movie.created_at.desc()).first()
+    )
     latest_movie_added = (
         latest_movie.created_at.strftime("%d.%m.%Y")
         if latest_movie and latest_movie.created_at
@@ -716,7 +731,9 @@ def filme_all():
     )
 
     highlight_movie = (
-        Movie.query.order_by(Movie.rating.desc().nullslast(), Movie.created_at.desc()).first()
+        Movie.query.filter(valid_filter)
+        .order_by(Movie.rating.desc().nullslast(), Movie.created_at.desc())
+        .first()
     )
     if highlight_movie:
         highlight_image = build_tmdb_image(highlight_movie.backdrop_path, "w780") or build_tmdb_image(
@@ -782,7 +799,11 @@ def settings_view():
 
 @app.route("/api/movies")
 def api_movies():
-    movies = Movie.query.order_by(Movie.rating.desc().nullslast()).all()
+    movies = (
+        Movie.query.filter(movie_has_valid_streaming_link())
+        .order_by(Movie.rating.desc().nullslast())
+        .all()
+    )
     return jsonify([movie.to_dict() for movie in movies])
 
 
