@@ -694,10 +694,8 @@ def build_library_context() -> dict:
         tmdb_ids = [entry.get("id") for entry in now_playing_payload if isinstance(entry.get("id"), int)]
         if tmdb_ids:
             order_mapping = {tmdb_id: index for index, tmdb_id in enumerate(tmdb_ids)}
-            order_case = case(
-                value=Movie.tmdb_id,
-                whens={tmdb_id: position for tmdb_id, position in order_mapping.items()},
-            )
+            order_whens = [(tmdb_id, position) for tmdb_id, position in order_mapping.items()]
+            order_case = case(*order_whens, value=Movie.tmdb_id)
             now_playing_movies = (
                 Movie.query.filter(valid_filter, Movie.tmdb_id.in_(tmdb_ids))
                 .order_by(order_case)
