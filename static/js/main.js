@@ -41,7 +41,7 @@ const scraperStatusLog = document.getElementById('scraperStatusLog');
 const scraperStatusStartButton = document.getElementById('scraperStatusStart');
 const scraperStatusRefreshButton = document.getElementById('scraperStatusRefresh');
 const kinoxLastPageLabel = document.getElementById('kinoxLastPage');
-const ALL_MOVIES_PAGE_SIZE = 25;
+const ALL_MOVIES_PAGE_SIZE = 100;
 
 let changeSection = () => {};
 let currentSectionName = 'start';
@@ -853,7 +853,18 @@ async function ensureAllMoviesLoaded() {
   try {
     const movies = await callApi('/api/movies');
     if (Array.isArray(movies)) {
-      allMovies = movies;
+      allMovies = movies.filter((movie) => {
+        if (!movie || !Array.isArray(movie.streaming_links)) {
+          return false;
+        }
+        return movie.streaming_links.some((link) => {
+          if (!link) {
+            return false;
+          }
+          const url = typeof link.url === 'string' ? link.url.trim() : '';
+          return url.length > 0;
+        });
+      });
       allMoviesLoaded = true;
       if (currentMovieId != null) {
         const index = allMovies.findIndex((item) => item.id === currentMovieId);
