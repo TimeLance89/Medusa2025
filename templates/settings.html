@@ -2,14 +2,14 @@
 {% block title %}{{ page_title or 'Medusa – Einstellungen' }}{% endblock %}
 
 {% block main %}
-<section class="panel page-intro">
+<section class="surface page-header">
     <div>
-        <h2>Einstellungen</h2>
-        <p class="panel-subtitle">Verwalte Schlüssel und Scraper-Einstellungen.</p>
+        <h1>Einstellungen</h1>
+        <p class="section-subtitle">Verwalte Schlüssel und Scraper-Einstellungen.</p>
     </div>
 </section>
 
-<section class="panel">
+<section class="surface">
     <form id="settingsForm" class="settings-form">
         <div class="form-grid">
             <label class="form-field">
@@ -34,10 +34,10 @@
     </form>
 </section>
 
-<section class="panel settings-reset">
+<section class="surface settings-reset">
     <div>
-        <h3>Scraper zurücksetzen</h3>
-        <p class="panel-subtitle">Lösche alle gescrapten Inhalte und beginne erneut.</p>
+        <h2>Scraper zurücksetzen</h2>
+        <p class="section-subtitle">Lösche alle gescrapten Inhalte und beginne erneut.</p>
     </div>
     <button type="button" id="resetScraped" class="btn btn-secondary">Gescrapte Inhalte löschen</button>
 </section>

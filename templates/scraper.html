@@ -2,23 +2,26 @@
 {% block title %}{{ page_title or 'Medusa – Scraper' }}{% endblock %}
 
 {% block main %}
-<section class="panel page-intro">
+<section class="surface page-header">
     <div>
-        <h2>Scraper</h2>
-        <p class="panel-subtitle">Verwalte Links, die über die Scraper gesammelt wurden.</p>
+        <h1>Scraper</h1>
+        <p class="section-subtitle">Verwalte Links, die über die Scraper gesammelt wurden.</p>
     </div>
 </section>
 
-<section class="panel">
+<section class="surface">
     <div class="scraper-grid">
         {% if scraped %}
             {% for link in scraped %}
             <div class="scraper-card" data-movie-id="{{ link.movie.id }}" role="button" tabindex="0">
-                <div>
+                <div class="scraper-card__info">
                     <h4>{{ link.movie.title }}</h4>
                     <p>{{ link.source_name }} · {{ link.mirror_info or 'Mirror' }}</p>
                 </div>
-                <button type="button" class="btn btn-ghost view-detail" data-movie-id="{{ link.movie.id }}">Details anzeigen</button>
+                <button type="button" class="chip view-detail" data-movie-id="{{ link.movie.id }}">
+                    <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+                    <span>Details</span>
+                </button>
             </div>
             {% endfor %}
         {% else %}

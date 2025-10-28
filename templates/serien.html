@@ -2,50 +2,56 @@
 {% block title %}{{ page_title or 'Medusa – Serien' }}{% endblock %}
 
 {% block main %}
-<section class="panel page-intro">
+<section class="surface page-header">
     <div>
-        <h2>Serien</h2>
-        <p class="panel-subtitle">Serien werden hier gesammelt, sobald du sie synchronisiert hast.</p>
+        <h1>Serien</h1>
+        <p class="section-subtitle">Sobald Serien synchronisiert sind, erscheinen sie hier in den gleichen eleganten Listen.</p>
     </div>
 </section>
 
 {% if series_sections %}
     {% for section in series_sections %}
-    <section class="panel carousel">
-        <div class="section-header">
+    {% if section['items'] %}
+    <section class="surface media-rail" data-rail>
+        <header class="section-head">
             <div>
-                <h3>{{ section.title }}</h3>
-                <span class="section-hint">Serienübersicht</span>
+                <h2>{{ section.title }}</h2>
+                <p class="section-subtitle">Aktualisierte Serienübersichten</p>
             </div>
-        </div>
-        {% if section['items'] %}
-        <div class="carousel-track">
+            <div class="rail-controls">
+                <button type="button" class="rail-button" data-rail-prev aria-label="Zurück"><span class="material-symbols-outlined">chevron_left</span></button>
+                <button type="button" class="rail-button" data-rail-next aria-label="Weiter"><span class="material-symbols-outlined">chevron_right</span></button>
+            </div>
+        </header>
+        <div class="media-rail__track" data-rail-track>
             {% for show in section['items'] %}
-            {% set poster_url = show.poster_path and "https://image.tmdb.org/t/p/w500" + show.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
-            {% set backdrop_url = show.backdrop_path and "https://image.tmdb.org/t/p/w780" + show.backdrop_path or '' %}
-            <article class="card" role="button" tabindex="0"
+            {% set poster_url = show.poster_path and 'https://image.tmdb.org/t/p/w500' + show.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+            {% set backdrop_url = show.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + show.backdrop_path or '' %}
+            <article class="media-card" role="button" tabindex="0"
                      data-movie-id="{{ show.id }}"
                      data-title="{{ show.title }}"
                      data-overview="{{ show.overview|default('')|e }}"
                      data-backdrop="{{ backdrop_url }}"
                      data-poster="{{ poster_url }}"
                      data-release="{{ show.release_date or '' }}">
-                <div class="card-poster" style="background-image: url('{{ poster_url }}');"></div>
-                <div class="card-overlay">
-                    <h4>{{ show.title }}</h4>
-                    <p>{{ show.release_date or 'Unbekannt' }}</p>
-                    <span class="rating">⭐ {{ (show.rating or 0)|round(1) }}</span>
+                <div class="media-card__poster" style="background-image: url('{{ poster_url }}');"></div>
+                <div class="media-card__overlay">
+                    <h3 class="media-card__title">{{ show.title }}</h3>
+                    <p class="media-card__meta">{{ show.release_date or 'Unbekannt' }}</p>
+                    <span class="media-card__rating">⭐ {{ (show.rating or 0)|round(1) }}</span>
                 </div>
             </article>
             {% endfor %}
         </div>
-        {% else %}
-        <p class="empty">Diese Kategorie enthält noch keine Serien.</p>
-        {% endif %}
     </section>
+    {% else %}
+    <section class="surface">
+        <p class="empty">Diese Kategorie enthält noch keine Serien.</p>
+    </section>
+    {% endif %}
     {% endfor %}
 {% else %}
-<section class="panel">
+<section class="surface">
     <p class="empty large">Noch keine Serien synchronisiert.</p>
 </section>
 {% endif %}

@@ -2,72 +2,87 @@
 {% block title %}{{ page_title or 'Medusa – Filme' }}{% endblock %}
 
 {% block main %}
-<section class="panel page-intro">
+<section class="surface page-header">
     <div>
-        <h2>Filme</h2>
-        <p class="panel-subtitle">Alle Filme deiner Bibliothek, kuratiert in cineastischen Reihen.</p>
+        <h1>Filme</h1>
+        <p class="section-subtitle">Alle Filme deiner Bibliothek in einem modernen Grid – inspiriert von den besten Streaming-UIs.</p>
     </div>
-    <div class="panel-actions">
+    <div class="page-header__actions">
         {% if show_all %}
-        <a href="{{ url_for('filme') }}" class="btn btn-outline" data-navigation="route">Übersicht</a>
+        <a href="{{ url_for('filme') }}" class="chip" data-navigation="route">
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+            <span>Zur Übersicht</span>
+        </a>
         {% else %}
-        <a href="{{ url_for('filme_all') }}" class="btn btn-secondary" data-navigation="route">Alle Filme</a>
+        <a href="{{ url_for('filme_all') }}" class="chip" data-navigation="route">
+            <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
+            <span>Alle Filme</span>
+        </a>
         {% endif %}
     </div>
 </section>
 
 {% if film_sections %}
     {% for section in film_sections %}
-    <section class="panel carousel">
-        <div class="section-header">
+    {% if section['items'] %}
+    <section class="surface media-rail" data-rail>
+        <header class="section-head">
             <div>
-                <h3>{{ section.title }}</h3>
-                <span class="section-hint">Filmübersicht</span>
+                <h2>{{ section.title }}</h2>
+                <p class="section-subtitle">Handverlesene Sets deiner Sammlung</p>
             </div>
-        </div>
-        {% if section['items'] %}
-        <div class="carousel-track">
+            <div class="rail-controls">
+                <button type="button" class="rail-button" data-rail-prev aria-label="Zurück"><span class="material-symbols-outlined">chevron_left</span></button>
+                <button type="button" class="rail-button" data-rail-next aria-label="Weiter"><span class="material-symbols-outlined">chevron_right</span></button>
+            </div>
+        </header>
+        <div class="media-rail__track" data-rail-track>
             {% for movie in section['items'] %}
-            {% set poster_url = movie.poster_path and "https://image.tmdb.org/t/p/w500" + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
-            {% set backdrop_url = movie.backdrop_path and "https://image.tmdb.org/t/p/w780" + movie.backdrop_path or '' %}
-            <article class="card" role="button" tabindex="0"
+            {% set poster_url = movie.poster_path and 'https://image.tmdb.org/t/p/w500' + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+            {% set backdrop_url = movie.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + movie.backdrop_path or '' %}
+            <article class="media-card" role="button" tabindex="0"
                      data-movie-id="{{ movie.id }}"
                      data-title="{{ movie.title }}"
                      data-overview="{{ movie.overview|default('')|e }}"
                      data-backdrop="{{ backdrop_url }}"
                      data-poster="{{ poster_url }}"
                      data-release="{{ movie.release_date or '' }}">
-                <div class="card-poster" style="background-image: url('{{ poster_url }}');"></div>
-                <div class="card-overlay">
-                    <h4>{{ movie.title }}</h4>
-                    <p>{{ movie.release_date or 'Unbekannt' }}</p>
-                    <span class="rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
+                <div class="media-card__poster" style="background-image: url('{{ poster_url }}');"></div>
+                <div class="media-card__overlay">
+                    <h3 class="media-card__title">{{ movie.title }}</h3>
+                    <p class="media-card__meta">{{ movie.release_date or 'Unbekannt' }}</p>
+                    <span class="media-card__rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
                 </div>
             </article>
             {% endfor %}
         </div>
-        {% else %}
-        <p class="empty">In diesem Bereich wurden noch keine Filme gefunden.</p>
-        {% endif %}
     </section>
+    {% else %}
+    <section class="surface">
+        <p class="empty">In diesem Bereich wurden noch keine Filme gefunden.</p>
+    </section>
+    {% endif %}
     {% endfor %}
 {% else %}
-<section class="panel">
+<section class="surface">
     <p class="empty large">Noch keine Filme vorhanden. Synchronisiere zuerst Inhalte.</p>
 </section>
 {% endif %}
 
 {% if show_all %}
-<section class="panel detail-section detail-all-movies">
-    <div class="detail-section-head">
-        <h3>Alle Filme</h3>
-        <div class="detail-pagination">
-            <button type="button" id="detailAllPrev" class="detail-page-btn" aria-label="Vorherige Seite">‹</button>
-            <span id="detailAllPageLabel" class="detail-page-label"></span>
-            <button type="button" id="detailAllNext" class="detail-page-btn" aria-label="Nächste Seite">›</button>
+<section class="surface detail-all">
+    <header class="section-head">
+        <div>
+            <h2>Alle Filme</h2>
+            <p class="section-subtitle">Komplette Übersicht deiner Bibliothek</p>
         </div>
-    </div>
-    <div id="detailAllMovies" class="detail-all-grid"></div>
+        <div class="detail-pagination">
+            <button type="button" id="detailAllPrev" class="rail-button" aria-label="Vorherige Seite"><span class="material-symbols-outlined">chevron_left</span></button>
+            <span id="detailAllPageLabel" class="detail-page-label"></span>
+            <button type="button" id="detailAllNext" class="rail-button" aria-label="Nächste Seite"><span class="material-symbols-outlined">chevron_right</span></button>
+        </div>
+    </header>
+    <div id="detailAllMovies" class="media-grid media-grid--flex"></div>
 </section>
 {% endif %}
 {% endblock %}
