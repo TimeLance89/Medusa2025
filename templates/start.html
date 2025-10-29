@@ -211,7 +211,7 @@
         <article class="spotlight-card card" role="button" tabindex="0"
                  data-movie-id="{{ spotlight_recent.id }}"
                  data-title="{{ spotlight_recent.title }}"
-                 data-overview="{{ spotlight_recent.overview|default('')|e }}"
+                 data-overview="{{ spotlight_recent.overview|default('', true)|e }}"
                  data-backdrop="{{ spotlight_recent_backdrop }}"
                  data-poster="{{ spotlight_recent_poster }}"
                  data-release="{{ spotlight_recent.release_date or '' }}">
@@ -222,7 +222,7 @@
                     Neu in deiner Mediathek
                 </span>
                 <h3>{{ spotlight_recent.title }}</h3>
-                <p>{{ spotlight_recent.overview|default('Keine Beschreibung verfügbar.')|truncate(150) }}</p>
+                <p>{{ (spotlight_recent.overview or 'Keine Beschreibung verfügbar.')|truncate(150) }}</p>
                 <div class="spotlight-card__actions">
                     <button class="btn btn-primary view-detail" type="button" data-movie-id="{{ spotlight_recent.id }}">
                         <span class="material-symbols-outlined" aria-hidden="true">play_circle</span>
@@ -237,7 +237,7 @@
         <article class="spotlight-card card" role="button" tabindex="0"
                  data-movie-id="{{ spotlight_scraped.id }}"
                  data-title="{{ spotlight_scraped.title }}"
-                 data-overview="{{ spotlight_scraped.overview|default('')|e }}"
+                 data-overview="{{ spotlight_scraped.overview|default('', true)|e }}"
                  data-backdrop="{{ spotlight_scraped_backdrop }}"
                  data-poster="{{ spotlight_scraped_poster }}"
                  data-release="{{ spotlight_scraped.release_date or '' }}">
@@ -248,7 +248,7 @@
                     {{ spotlight_scraped_link.source_name }}{% if spotlight_scraped_link.mirror_info %} · {{ spotlight_scraped_link.mirror_info }}{% endif %}
                 </span>
                 <h3>{{ spotlight_scraped.title }}</h3>
-                <p>{{ spotlight_scraped.overview|default('Direkter Stream aus deiner Scraper-Integration.')|truncate(150) }}</p>
+                <p>{{ (spotlight_scraped.overview or 'Direkter Stream aus deiner Scraper-Integration.')|truncate(150) }}</p>
                 <div class="spotlight-card__actions">
                     <button class="btn btn-secondary view-detail" type="button" data-movie-id="{{ spotlight_scraped.id }}">
                         <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
@@ -263,7 +263,7 @@
         <article class="spotlight-card card" role="button" tabindex="0"
                  data-movie-id="{{ now_playing_highlight.id }}"
                  data-title="{{ now_playing_highlight.title }}"
-                 data-overview="{{ now_playing_highlight.overview|default('')|e }}"
+                 data-overview="{{ now_playing_highlight.overview|default('', true)|e }}"
                  data-backdrop="{{ now_playing_backdrop }}"
                  data-poster="{{ now_playing_poster }}"
                  data-release="{{ now_playing_highlight.release_date or '' }}">
@@ -274,7 +274,7 @@
                     Aktuell im Kino
                 </span>
                 <h3>{{ now_playing_highlight.title }}</h3>
-                <p>{{ now_playing_highlight.overview|default('Starte direkt aus deiner Bibliothek.')|truncate(150) }}</p>
+                <p>{{ (now_playing_highlight.overview or 'Starte direkt aus deiner Bibliothek.')|truncate(150) }}</p>
                 <div class="spotlight-card__actions">
                     <button class="btn btn-ghost view-detail" type="button" data-movie-id="{{ now_playing_highlight.id }}">
                         <span class="material-symbols-outlined" aria-hidden="true">info</span>
@@ -308,7 +308,7 @@
         <article class="media-card" role="button" tabindex="0"
                  data-movie-id="{{ movie.id }}"
                  data-title="{{ movie.title }}"
-                 data-overview="{{ movie.overview|default('')|e }}"
+                 data-overview="{{ movie.overview|default('', true)|e }}"
                  data-backdrop="{{ backdrop_url }}"
                  data-poster="{{ poster_url }}"
                  data-release="{{ movie.release_date or '' }}">
@@ -378,7 +378,7 @@
             <article class="media-card" role="button" tabindex="0"
                      data-movie-id="{{ movie.id }}"
                      data-title="{{ movie.title }}"
-                     data-overview="{{ movie.overview|default('')|e }}"
+                     data-overview="{{ movie.overview|default('', true)|e }}"
                      data-backdrop="{{ backdrop_url }}"
                      data-poster="{{ poster_url }}"
                      data-release="{{ movie.release_date or '' }}">
@@ -415,7 +415,7 @@
         <article class="media-card" role="button" tabindex="0"
                  data-movie-id="{{ movie.id }}"
                  data-title="{{ movie.title }}"
-                 data-overview="{{ movie.overview|default('')|e }}"
+                 data-overview="{{ movie.overview|default('', true)|e }}"
                  data-backdrop="{{ backdrop_url }}"
                  data-poster="{{ poster_url }}"
                  data-release="{{ movie.release_date or '' }}">
@@ -447,7 +447,7 @@
         <article class="media-card media-card--grid" role="button" tabindex="0"
                  data-movie-id="{{ movie.id }}"
                  data-title="{{ movie.title }}"
-                 data-overview="{{ movie.overview|default('')|e }}"
+                 data-overview="{{ movie.overview|default('', true)|e }}"
                  data-backdrop="{{ backdrop_url }}"
                  data-poster="{{ poster_url }}"
                  data-release="{{ movie.release_date or '' }}">
