@@ -41,15 +41,20 @@
         </div>
         <div class="detail-content">
             <div class="detail-stage">
-                <div class="detail-stage__player">
-                    <div class="detail-stage__header">
-                        <span class="detail-stage__badge">Stream Player</span>
-                        <p class="detail-stage__subtitle">Alle verfügbaren Streams auf einen Blick.</p>
+                <section class="detail-stage__player" aria-labelledby="detailStreamsTitle">
+                    <header class="detail-streams__header">
+                        <div>
+                            <span class="detail-streams__eyebrow">Stream Center</span>
+                            <h3 id="detailStreamsTitle">Verfügbare Quellen</h3>
+                        </div>
+                        <p class="detail-streams__subtitle">
+                            Wähle einen Mirror oder öffne den Stream in einem neuen Tab.
+                        </p>
+                    </header>
+                    <div class="detail-streams__content">
+                        <div id="detailStreaming" class="stream-area" role="region" aria-live="polite"></div>
                     </div>
-                    <div class="detail-stage__screen">
-                        <div id="detailStreaming" class="detail-streaming"></div>
-                    </div>
-                </div>
+                </section>
                 <div class="detail-stage__meta">
                     <section class="detail-section detail-overview">
                         <h3>Handlung</h3>
