@@ -90,6 +90,10 @@ const ALL_MOVIES_RUNTIME_CHUNK_SIZE = 25;
 const HERO_ROTATION_INTERVAL = 9000;
 const titleCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 
+const STORAGE_KEYS = Object.freeze({
+  allMoviesSort: 'medusa.allMovies.sortPreferences',
+});
+
 let changeSection = () => {};
 let currentSectionName = 'start';
 let previousSectionName = 'start';
@@ -120,6 +124,37 @@ let heroSlides = [];
 let heroActiveIndex = 0;
 let heroRotationTimeout = null;
 const allMoviesRuntimeCache = new Map();
+
+function loadAllMoviesSortPreference() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return null;
+  }
+  try {
+    const rawValue = window.localStorage.getItem(STORAGE_KEYS.allMoviesSort);
+    if (!rawValue) {
+      return null;
+    }
+    const parsed = JSON.parse(rawValue);
+    if (parsed && typeof parsed.sort === 'string' && typeof parsed.direction === 'string') {
+      return parsed;
+    }
+  } catch (error) {
+    console.warn('Konnte Sortierpräferenz nicht laden.', error);
+  }
+  return null;
+}
+
+function saveAllMoviesSortPreference(sort, direction) {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return;
+  }
+  try {
+    const payload = JSON.stringify({ sort, direction });
+    window.localStorage.setItem(STORAGE_KEYS.allMoviesSort, payload);
+  } catch (error) {
+    console.warn('Konnte Sortierpräferenz nicht speichern.', error);
+  }
+}
 
 function showToast(message, variant = 'info') {
   toast.textContent = message;
@@ -2012,21 +2047,49 @@ function initAllMoviesSort() {
     return;
   }
 
+  let storedSortPreference = loadAllMoviesSortPreference();
+  if (storedSortPreference) {
+    const targetButton = Array.from(allMoviesSortButtons).find((button) => {
+      const option = button.dataset.sortOption || 'popular';
+      const direction = button.dataset.sortDirection || (option === 'title' ? 'asc' : 'desc');
+      return option === storedSortPreference.sort && direction === storedSortPreference.direction;
+    });
+    if (targetButton) {
+      allMoviesSort = storedSortPreference.sort;
+      allMoviesDirection = storedSortPreference.direction;
+    } else {
+      storedSortPreference = null;
+    }
+  }
+
+  const getButtonSortInfo = (button) => {
+    const option = button.dataset.sortOption || 'popular';
+    const direction = button.dataset.sortDirection || (option === 'title' ? 'asc' : 'desc');
+    return { option, direction };
+  };
+
+  const updateActiveState = () => {
+    allMoviesSortButtons.forEach((button) => {
+      const { option, direction } = getButtonSortInfo(button);
+      button.classList.toggle('is-active', option === allMoviesSort && direction === allMoviesDirection);
+    });
+  };
+
+  updateActiveState();
+
   allMoviesSortButtons.forEach((button) => {
+    const { option, direction } = getButtonSortInfo(button);
     button.addEventListener('click', async () => {
       if (allMoviesLoading || allMoviesSorting) {
         return;
       }
-      const sortOption = button.dataset.sortOption || 'popular';
-      const direction = button.dataset.sortDirection || (sortOption === 'title' ? 'asc' : 'desc');
-      if (sortOption === allMoviesSort && direction === allMoviesDirection) {
+      if (option === allMoviesSort && direction === allMoviesDirection) {
         return;
       }
-      allMoviesSort = sortOption;
+      allMoviesSort = option;
       allMoviesDirection = direction;
-      allMoviesSortButtons.forEach((element) => {
-        element.classList.toggle('is-active', element === button);
-      });
+      updateActiveState();
+      saveAllMoviesSortPreference(allMoviesSort, allMoviesDirection);
       try {
         await applyAllMoviesSort({ resetPage: true });
       } catch (error) {
@@ -2034,6 +2097,10 @@ function initAllMoviesSort() {
       }
     });
   });
+
+  if (!storedSortPreference) {
+    saveAllMoviesSortPreference(allMoviesSort, allMoviesDirection);
+  }
 }
 
 function closeTrailerModal() {
