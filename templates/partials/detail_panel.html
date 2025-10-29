@@ -40,32 +40,38 @@
             </div>
         </div>
         <div class="detail-content">
-            <div class="detail-columns">
-                <div class="detail-main">
+            <div class="detail-stage">
+                <div class="detail-stage__player">
+                    <div class="detail-stage__header">
+                        <span class="detail-stage__badge">Stream Player</span>
+                        <p class="detail-stage__subtitle">Alle verfügbaren Streams auf einen Blick.</p>
+                    </div>
+                    <div class="detail-stage__screen">
+                        <div id="detailStreaming" class="detail-streaming"></div>
+                    </div>
+                </div>
+                <div class="detail-stage__meta">
                     <section class="detail-section detail-overview">
-                        <h3>Überblick</h3>
+                        <h3>Handlung</h3>
                         <p id="detailOverviewSecondary"></p>
+                    </section>
+                    <section class="detail-section detail-section--facts">
+                        <h3>Details</h3>
                         <ul id="detailFacts" class="detail-facts"></ul>
                     </section>
-                    <section class="detail-section detail-section--cast">
-                        <div class="detail-section-head">
-                            <h3>Besetzung</h3>
-                            <span class="detail-section-subtitle">Die wichtigsten Schauspieler:innen auf einen Blick</span>
-                        </div>
-                        <ul
-                            id="detailCast"
-                            class="detail-cast"
-                            data-placeholder="{{ url_for('static', filename='images/profile-placeholder.svg') }}"
-                        ></ul>
-                    </section>
                 </div>
-                <aside class="detail-side">
-                    <section class="detail-section">
-                        <h3>Streams</h3>
-                        <div id="detailStreaming" class="detail-streaming"></div>
-                    </section>
-                </aside>
             </div>
+            <section class="detail-section detail-section--cast">
+                <div class="detail-section-head">
+                    <h3>Besetzung</h3>
+                    <span class="detail-section-subtitle">Die wichtigsten Schauspieler:innen auf einen Blick</span>
+                </div>
+                <ul
+                    id="detailCast"
+                    class="detail-cast"
+                    data-placeholder="{{ url_for('static', filename='images/profile-placeholder.svg') }}"
+                ></ul>
+            </section>
         </div>
     </div>
 </section>
