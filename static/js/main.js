@@ -32,7 +32,7 @@ const heroIndicatorsContainer = heroSection?.querySelector('.hero__indicators');
 const heroPrevButton = heroSection?.querySelector('[data-hero-prev]');
 const heroNextButton = heroSection?.querySelector('[data-hero-next]');
 const heroDataElement = document.getElementById('heroData');
-const topbarScrapeButton = document.getElementById('scrapeKinox');
+const topbarScrapeButton = document.getElementById('scrapeAllScrapers');
 const topbarSearchForm = document.querySelector('.topbar-search');
 const topbarSearchInput = topbarSearchForm?.querySelector('input[name="q"]');
 const topbarSearchResults = document.getElementById('topbarSearchResults');
@@ -43,19 +43,47 @@ const searchOverlayMeta = document.getElementById('searchOverlayMeta');
 const searchOverlayList = document.getElementById('searchOverlayList');
 const searchOverlayEmpty = document.getElementById('searchOverlayEmpty');
 const searchOverlayClose = document.getElementById('searchOverlayClose');
-const scraperStatusPanel = document.getElementById('scraperStatusPanel');
-const scraperStatusMessage = document.getElementById('scraperStatusMessage');
-const scraperStatusState = document.getElementById('scraperStatusState');
-const scraperStatusProgressBar = document.getElementById('scraperStatusProgressBar');
-const scraperStatusProgressLabel = document.getElementById('scraperStatusProgressLabel');
-const scraperStatusUpdated = document.getElementById('scraperStatusUpdated');
-const scraperStatusPages = document.getElementById('scraperStatusPages');
-const scraperStatusLinks = document.getElementById('scraperStatusLinks');
-const scraperStatusTitle = document.getElementById('scraperStatusTitle');
-const scraperStatusLog = document.getElementById('scraperStatusLog');
-const scraperStatusStartButton = document.getElementById('scraperStatusStart');
-const scraperStatusRefreshButton = document.getElementById('scraperStatusRefresh');
-const kinoxLastPageLabel = document.getElementById('kinoxLastPage');
+const scraperStartAllButton = document.getElementById('scraperStartAll');
+const scraperPanels = Array.from(document.querySelectorAll('[data-scraper-panel]'));
+const scraperControllers = new Map();
+
+scraperPanels.forEach((panel) => {
+  const provider = panel.dataset.provider;
+  if (!provider) {
+    return;
+  }
+  scraperControllers.set(provider, {
+    provider,
+    panel,
+    message: panel.querySelector('[data-role="scraper-message"]'),
+    state: panel.querySelector('[data-role="scraper-state"]'),
+    progressBar: panel.querySelector('[data-role="scraper-progress-bar"]'),
+    progressLabel: panel.querySelector('[data-role="scraper-progress-label"]'),
+    updated: panel.querySelector('[data-role="scraper-updated"]'),
+    pages: panel.querySelector('[data-role="scraper-pages"]'),
+    links: panel.querySelector('[data-role="scraper-links"]'),
+    title: panel.querySelector('[data-role="scraper-title"]'),
+    log: panel.querySelector('[data-role="scraper-log"]'),
+    startButton: panel.querySelector('[data-action="start-scraper"]'),
+    refreshButton: panel.querySelector('[data-action="refresh-scraper"]'),
+  });
+});
+
+const scraperLastPageLabels = new Map();
+document.querySelectorAll('.scraper-last-page').forEach((element) => {
+  const provider = element.dataset.provider;
+  if (provider) {
+    scraperLastPageLabels.set(provider, element);
+  }
+});
+
+const scraperNextInputs = new Map();
+document.querySelectorAll('[data-scraper-next]').forEach((input) => {
+  const provider = input.dataset.provider;
+  if (provider) {
+    scraperNextInputs.set(provider, input);
+  }
+});
 const allMoviesSortButtons = document.querySelectorAll('[data-sort-option]');
 const ALL_MOVIES_PAGE_SIZE = 100;
 const ALL_MOVIES_RUNTIME_CHUNK_SIZE = 25;
@@ -67,8 +95,7 @@ let currentSectionName = 'start';
 let previousSectionName = 'start';
 let currentSettings = {
   tmdb_api_key: '',
-  kinox_next_page: 1,
-  kinox_last_page: 0,
+  scrapers: {},
 };
 let currentTrailer = null;
 let currentStreamingLinks = [];
@@ -82,7 +109,7 @@ let allMoviesLoading = false;
 let allMoviesSorting = false;
 let allMoviesSort = 'popular';
 let allMoviesDirection = 'desc';
-let currentScraperStatus = null;
+let currentScraperStatuses = {};
 let scraperStatusTimeout = null;
 let searchAbortController = null;
 let searchDebounceTimeout = null;
@@ -711,54 +738,24 @@ async function syncTmdb() {
   }
 }
 
-async function scrapeKinox() {
-  const buttonsToDisable = [topbarScrapeButton, scraperStatusStartButton];
-  buttonsToDisable.forEach((button) => {
-    if (button) {
-      button.disabled = true;
-    }
-  });
-  try {
-    showToast('Kinox Scraper wird gestartet...');
-    const response = await callApi('/api/scrape/kinox', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    if (response?.success) {
-      const normalizedStatus = normalizeScraperStatus(response.status);
-      currentScraperStatus = normalizedStatus;
-      if (Number.isFinite(normalizedStatus.next_page)) {
-        currentSettings.kinox_next_page = normalizedStatus.next_page;
-      }
-      if (Number.isFinite(normalizedStatus.last_page)) {
-        currentSettings.kinox_last_page = normalizedStatus.last_page;
-      }
-      refreshKinoxSettingsUi();
-      updateScraperStatusUI(normalizedStatus);
-      if (response.started) {
-        showToast('Scraper läuft im Hintergrund.', 'success');
-      } else if (response.message) {
-        showToast(response.message, 'info');
-      }
-      ensureScraperStatusPolling(response.started ? 1500 : undefined);
-    }
-  } catch (_) {
-    // Fehler bereits behandelt
-  } finally {
-    if (topbarScrapeButton) {
-      topbarScrapeButton.disabled = false;
-    }
-    if (!currentScraperStatus?.running) {
-      if (scraperStatusStartButton) {
-        scraperStatusStartButton.disabled = false;
-      }
-    }
-  }
+function collectScraperStartButtons() {
+  return Array.from(scraperControllers.values())
+    .map((controller) => controller.startButton)
+    .filter(Boolean);
 }
 
-function normalizeScraperStatus(raw) {
+function setButtonsDisabled(buttons, disabled) {
+  buttons.forEach((button) => {
+    if (button) {
+      button.disabled = disabled;
+    }
+  });
+}
+
+function normalizeScraperStatus(raw, provider = '') {
   const base = {
+    provider,
+    provider_label: '',
     running: false,
     start_page: null,
     current_page: null,
@@ -778,11 +775,14 @@ function normalizeScraperStatus(raw) {
     log: [],
   };
 
-  if (!raw || typeof raw !== 'object') {
-    return { ...base };
+  const status = { ...base };
+  if (raw && typeof raw === 'object') {
+    Object.assign(status, raw);
   }
 
-  const status = { ...base, ...raw };
+  status.provider = typeof status.provider === 'string' && status.provider ? status.provider : provider;
+  status.provider_label =
+    typeof status.provider_label === 'string' && status.provider_label ? status.provider_label : status.provider;
 
   const numericFields = [
     'start_page',
@@ -807,6 +807,86 @@ function normalizeScraperStatus(raw) {
   status.progress_mode = typeof status.progress_mode === 'string' ? status.progress_mode : base.progress_mode;
 
   return status;
+}
+
+function normalizeScraperStatuses(rawStatuses) {
+  const normalized = {};
+  scraperControllers.forEach((_, provider) => {
+    normalized[provider] = normalizeScraperStatus(rawStatuses?.[provider], provider);
+  });
+  Object.keys(rawStatuses || {}).forEach((provider) => {
+    if (!normalized[provider]) {
+      normalized[provider] = normalizeScraperStatus(rawStatuses[provider], provider);
+    }
+  });
+  return normalized;
+}
+
+async function startScraper(provider) {
+  if (!provider) return;
+  const controller = scraperControllers.get(provider);
+  const buttonsToDisable = [topbarScrapeButton, scraperStartAllButton, controller?.startButton].filter(Boolean);
+  setButtonsDisabled(buttonsToDisable, true);
+  try {
+    const label = controller?.panel?.querySelector('h2')?.textContent || 'Scraper';
+    showToast(`${label} wird gestartet...`);
+    const response = await callApi(`/api/scrape/${provider}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (response?.success) {
+      const anyRunning = updateScraperStatusUI(response.status);
+      if (response.started_any) {
+        showToast(response.message || 'Scraper läuft im Hintergrund.', 'success');
+      } else if (response.message) {
+        showToast(response.message, 'info');
+      }
+      ensureScraperStatusPolling(anyRunning || response.started_any ? 1500 : undefined);
+    }
+  } catch (_) {
+    // Fehler bereits behandelt durch callApi
+  } finally {
+    if (topbarScrapeButton) {
+      topbarScrapeButton.disabled = false;
+    }
+    if (scraperStartAllButton) {
+      scraperStartAllButton.disabled = false;
+    }
+    updateStartButtonsDisabled();
+  }
+}
+
+async function startAllScrapers() {
+  const buttonsToDisable = [topbarScrapeButton, scraperStartAllButton, ...collectScraperStartButtons()];
+  setButtonsDisabled(buttonsToDisable, true);
+  try {
+    showToast('Alle Scraper werden gestartet...');
+    const response = await callApi('/api/scrape/all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (response?.success) {
+      const anyRunning = updateScraperStatusUI(response.status);
+      if (response.started_any) {
+        showToast(response.message || 'Scraper laufen im Hintergrund.', 'success');
+      } else if (response.message) {
+        showToast(response.message, 'info');
+      }
+      ensureScraperStatusPolling(anyRunning || response.started_any ? 1500 : undefined);
+    }
+  } catch (_) {
+    // Fehler bereits behandelt durch callApi
+  } finally {
+    if (topbarScrapeButton) {
+      topbarScrapeButton.disabled = false;
+    }
+    if (scraperStartAllButton) {
+      scraperStartAllButton.disabled = false;
+    }
+    updateStartButtonsDisabled();
+  }
 }
 
 function formatScraperLogTime(value) {
@@ -844,17 +924,18 @@ function formatScraperUpdated(value) {
   return `Aktualisiert: ${dateString} ${timeString}`;
 }
 
-function renderScraperStatusLog(entries) {
-  if (!scraperStatusLog) return;
+function renderScraperStatusLog(controller, entries) {
+  if (!controller?.log) return;
 
-  scraperStatusLog.innerHTML = '';
+  const list = controller.log;
+  list.innerHTML = '';
 
   const safeEntries = Array.isArray(entries) ? entries.filter(Boolean) : [];
   if (!safeEntries.length) {
     const empty = document.createElement('li');
     empty.className = 'scraper-status__log-item is-empty';
     empty.textContent = 'Noch keine Aktivitäten.';
-    scraperStatusLog.appendChild(empty);
+    list.appendChild(empty);
     return;
   }
 
@@ -876,63 +957,61 @@ function renderScraperStatusLog(entries) {
 
     item.appendChild(time);
     item.appendChild(text);
-    scraperStatusLog.appendChild(item);
+    list.appendChild(item);
   });
 }
 
-function updateScraperStatusUI(status) {
-  const normalized = normalizeScraperStatus(status);
-  currentScraperStatus = normalized;
+function updateStartButtonsDisabled() {
+  scraperControllers.forEach((controller, provider) => {
+    if (!controller.startButton) return;
+    controller.startButton.disabled = Boolean(currentScraperStatuses[provider]?.running);
+  });
+}
 
-  if (Number.isFinite(normalized.next_page)) {
-    currentSettings.kinox_next_page = normalized.next_page;
-  }
-  if (Number.isFinite(normalized.last_page)) {
-    currentSettings.kinox_last_page = normalized.last_page;
-  }
-  refreshKinoxSettingsUi();
+function updateSingleScraperUI(controller, status) {
+  if (!controller) return;
 
-  const progressValue = Math.max(0, Math.min(100, Number(normalized.progress) || 0));
-  const progressMode = normalized.progress_mode || (normalized.total_pages > 0 ? 'determinate' : normalized.running ? 'indeterminate' : 'idle');
-  const message = normalized.message || (normalized.running ? 'Scraper läuft…' : 'Bereit.');
-  const state = normalized.running ? 'running' : normalized.error ? 'error' : normalized.processed_links > 0 ? 'done' : 'idle';
+  const progressValue = Math.max(0, Math.min(100, Number(status.progress) || 0));
+  const progressMode = status.progress_mode || (status.total_pages > 0 ? 'determinate' : status.running ? 'indeterminate' : 'idle');
+  const message = status.message || (status.running ? 'Scraper läuft…' : 'Bereit.');
+  const state = status.running ? 'running' : status.error ? 'error' : status.processed_links > 0 ? 'done' : 'idle';
 
-  if (scraperStatusPanel) {
-    scraperStatusPanel.dataset.running = normalized.running ? 'true' : 'false';
+  if (controller.panel) {
+    controller.panel.dataset.running = status.running ? 'true' : 'false';
   }
-  if (scraperStatusMessage) {
-    scraperStatusMessage.textContent = message;
+  if (controller.message) {
+    controller.message.textContent = message;
   }
-  if (scraperStatusState) {
+  if (controller.state) {
     const stateText = state === 'running' ? 'Läuft' : state === 'error' ? 'Fehler' : state === 'done' ? 'Fertig' : 'Bereit';
-    scraperStatusState.textContent = stateText;
-    scraperStatusState.dataset.state = state;
+    controller.state.textContent = stateText;
+    controller.state.dataset.state = state;
   }
-  if (scraperStatusProgressBar) {
+  if (controller.progressBar) {
     if (progressMode === 'indeterminate') {
-      scraperStatusProgressBar.classList.add('is-indeterminate');
-      scraperStatusProgressBar.style.width = '28%';
+      controller.progressBar.classList.add('is-indeterminate');
+      controller.progressBar.style.width = '28%';
     } else {
-      scraperStatusProgressBar.classList.remove('is-indeterminate');
-      scraperStatusProgressBar.style.width = `${progressValue.toFixed(1)}%`;
+      controller.progressBar.classList.remove('is-indeterminate');
+      controller.progressBar.style.width = `${progressValue.toFixed(1)}%`;
     }
   }
-  if (scraperStatusProgressLabel) {
-    scraperStatusProgressLabel.textContent = progressMode === 'indeterminate' && normalized.running
+  if (controller.progressLabel) {
+    controller.progressLabel.textContent = progressMode === 'indeterminate' && status.running
       ? 'Laufend'
       : `${progressValue.toFixed(1)}%`;
   }
-  if (scraperStatusUpdated) {
-    scraperStatusUpdated.textContent = formatScraperUpdated(normalized.last_update);
+  if (controller.updated) {
+    controller.updated.textContent = formatScraperUpdated(status.last_update);
   }
-  if (scraperStatusPages) {
+  if (controller.pages) {
     let pagesText = 'Noch nicht gestartet';
-    const nextPage = Number.isFinite(normalized.next_page) ? normalized.next_page : null;
-    const lastPage = Number.isFinite(normalized.last_page) ? normalized.last_page : null;
-    const currentPage = Number.isFinite(normalized.current_page) ? normalized.current_page : null;
-    const processed = normalized.processed_pages || 0;
+    const nextPage = Number.isFinite(status.next_page) ? status.next_page : null;
+    const lastPage = Number.isFinite(status.last_page) ? status.last_page : null;
+    const currentPage = Number.isFinite(status.current_page) ? status.current_page : null;
+    const processed = status.processed_pages || 0;
 
-    if (normalized.running) {
+    if (status.running) {
       if (currentPage) {
         pagesText = `Seite ${currentPage}`;
       } else if (nextPage) {
@@ -954,19 +1033,52 @@ function updateScraperStatusUI(status) {
     } else if (nextPage) {
       pagesText = `Bereit ab Seite ${nextPage}`;
     }
-    scraperStatusPages.textContent = pagesText;
+    controller.pages.textContent = pagesText;
   }
-  if (scraperStatusLinks) {
-    scraperStatusLinks.textContent = String(normalized.processed_links || 0);
+  if (controller.links) {
+    controller.links.textContent = String(status.processed_links || 0);
   }
-  if (scraperStatusTitle) {
-    scraperStatusTitle.textContent = normalized.last_title || '–';
+  if (controller.title) {
+    controller.title.textContent = status.last_title || '–';
   }
-  if (scraperStatusStartButton) {
-    scraperStatusStartButton.disabled = normalized.running;
+  if (controller.startButton) {
+    controller.startButton.disabled = status.running;
   }
 
-  renderScraperStatusLog(normalized.log);
+  renderScraperStatusLog(controller, status.log);
+
+  if (!status.provider) {
+    return;
+  }
+  if (!currentSettings.scrapers) {
+    currentSettings.scrapers = {};
+  }
+  const providerSettings = currentSettings.scrapers[status.provider] || {};
+  if (Number.isFinite(status.next_page)) {
+    providerSettings.next_page = status.next_page;
+  }
+  if (Number.isFinite(status.last_page)) {
+    providerSettings.last_page = status.last_page;
+  }
+  currentSettings.scrapers[status.provider] = providerSettings;
+}
+
+function updateScraperStatusUI(statuses) {
+  const normalized = normalizeScraperStatuses(statuses);
+  currentScraperStatuses = normalized;
+
+  let anyRunning = false;
+  scraperControllers.forEach((controller, provider) => {
+    const status = normalized[provider] || normalizeScraperStatus(null, provider);
+    updateSingleScraperUI(controller, status);
+    if (status.running) {
+      anyRunning = true;
+    }
+  });
+
+  refreshScraperSettingsUi();
+  updateStartButtonsDisabled();
+  return anyRunning;
 }
 
 function cancelScraperStatusPoll() {
@@ -977,17 +1089,17 @@ function cancelScraperStatusPoll() {
 }
 
 function scheduleScraperStatusPoll(delay = 6000) {
-  if (!scraperStatusPanel) return;
+  if (!scraperControllers.size) return;
   cancelScraperStatusPoll();
   scraperStatusTimeout = window.setTimeout(async () => {
     await fetchScraperStatus();
-    const nextDelay = currentScraperStatus?.running ? 2000 : 8000;
+    const nextDelay = Object.values(currentScraperStatuses).some((status) => status?.running) ? 2000 : 8000;
     scheduleScraperStatusPoll(nextDelay);
   }, delay);
 }
 
 async function fetchScraperStatus({ manual = false } = {}) {
-  if (!scraperStatusPanel) return;
+  if (!scraperControllers.size) return;
   try {
     const response = await fetch('/api/scrape/status', { cache: 'no-store' });
     if (!response.ok) {
@@ -995,7 +1107,10 @@ async function fetchScraperStatus({ manual = false } = {}) {
     }
     const payload = await response.json();
     if (payload?.success && payload.status) {
-      updateScraperStatusUI(payload.status);
+      const anyRunning = updateScraperStatusUI(payload.status);
+      if (!anyRunning) {
+        updateStartButtonsDisabled();
+      }
     } else if (manual) {
       showToast('Status konnte nicht geladen werden.', 'error');
     }
@@ -1008,32 +1123,34 @@ async function fetchScraperStatus({ manual = false } = {}) {
 }
 
 function ensureScraperStatusPolling(initialDelay) {
-  if (!scraperStatusPanel) return;
-  const delay = typeof initialDelay === 'number' ? initialDelay : currentScraperStatus?.running ? 2000 : 8000;
+  if (!scraperControllers.size) return;
+  const anyRunning = Object.values(currentScraperStatuses).some((status) => status?.running);
+  const delay = typeof initialDelay === 'number' ? initialDelay : anyRunning ? 2000 : 8000;
   scheduleScraperStatusPoll(delay);
 }
 
 function initScraperStatus() {
-  if (!scraperStatusPanel) return;
+  if (!scraperControllers.size) return;
 
-  let initialStatus = null;
-  try {
-    const raw = scraperStatusPanel.dataset.initialStatus;
-    if (raw) {
-      initialStatus = JSON.parse(raw);
+  const initialStatuses = {};
+  scraperControllers.forEach((controller, provider) => {
+    try {
+      const raw = controller.panel.dataset.initialStatus;
+      if (raw) {
+        initialStatuses[provider] = JSON.parse(raw);
+      }
+    } catch (error) {
+      console.error(error);
     }
-  } catch (error) {
-    console.error(error);
-  }
-  scraperStatusPanel.dataset.initialStatus = '';
+    controller.panel.dataset.initialStatus = '';
+  });
 
-  const normalized = normalizeScraperStatus(initialStatus);
-  updateScraperStatusUI(normalized);
-  ensureScraperStatusPolling(normalized.running ? 2000 : 8000);
+  const anyRunning = updateScraperStatusUI(initialStatuses);
+  ensureScraperStatusPolling(anyRunning ? 2000 : 8000);
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!scraperStatusPanel) return;
+  if (!scraperControllers.size) return;
   if (document.hidden) {
     cancelScraperStatusPoll();
     return;
@@ -1316,16 +1433,20 @@ function initMediaRails() {
   });
 }
 
-function refreshKinoxSettingsUi() {
-  const form = document.getElementById('settingsForm');
-  const nextValue = Number(currentSettings.kinox_next_page);
-  if (form?.kinox_next_page && document.activeElement !== form.kinox_next_page) {
-    form.kinox_next_page.value = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : '';
-  }
-  if (kinoxLastPageLabel) {
-    const lastValue = Number(currentSettings.kinox_last_page);
-    kinoxLastPageLabel.textContent = Number.isFinite(lastValue) && lastValue > 0 ? String(lastValue) : '–';
-  }
+function refreshScraperSettingsUi() {
+  scraperNextInputs.forEach((input, provider) => {
+    const settings = currentSettings.scrapers?.[provider] || {};
+    const nextValue = Number(settings.next_page);
+    if (document.activeElement !== input) {
+      input.value = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : '';
+    }
+  });
+
+  scraperLastPageLabels.forEach((label, provider) => {
+    const settings = currentSettings.scrapers?.[provider] || {};
+    const lastValue = Number(settings.last_page);
+    label.textContent = Number.isFinite(lastValue) && lastValue > 0 ? String(lastValue) : '–';
+  });
 }
 
 function bindButtons() {
@@ -1334,10 +1455,13 @@ function bindButtons() {
   const resetButton = document.getElementById('resetScraped');
 
   syncButton?.addEventListener('click', syncTmdb);
-  topbarScrapeButton?.addEventListener('click', scrapeKinox);
-  scraperStatusStartButton?.addEventListener('click', scrapeKinox);
-  scraperStatusRefreshButton?.addEventListener('click', () => {
-    fetchScraperStatus({ manual: true }).then(() => ensureScraperStatusPolling());
+  topbarScrapeButton?.addEventListener('click', startAllScrapers);
+  scraperStartAllButton?.addEventListener('click', startAllScrapers);
+  scraperControllers.forEach((controller, provider) => {
+    controller.startButton?.addEventListener('click', () => startScraper(provider));
+    controller.refreshButton?.addEventListener('click', () => {
+      fetchScraperStatus({ manual: true }).then(() => ensureScraperStatusPolling());
+    });
   });
   resetButton?.addEventListener('click', resetScrapedContent);
 
@@ -1349,15 +1473,19 @@ function bindButtons() {
 async function loadSettings() {
   try {
     const settings = await callApi('/api/settings');
-    currentSettings = { ...currentSettings, ...settings };
+    currentSettings = {
+      ...currentSettings,
+      tmdb_api_key: settings.tmdb_api_key || '',
+      scrapers: settings.scrapers || {},
+    };
     const form = document.getElementById('settingsForm');
     if (!form) {
-      refreshKinoxSettingsUi();
+      refreshScraperSettingsUi();
       return;
     }
 
-    form.tmdb_api_key.value = settings.tmdb_api_key || '';
-    refreshKinoxSettingsUi();
+    form.tmdb_api_key.value = currentSettings.tmdb_api_key || '';
+    refreshScraperSettingsUi();
   } catch (_) {
     // Fehler bereits angezeigt
   }
@@ -1370,8 +1498,14 @@ async function saveSettings(event) {
     tmdb_api_key: form.tmdb_api_key.value.trim(),
   };
 
-  if (form.kinox_next_page?.value) {
-    payload.kinox_next_page = form.kinox_next_page.value;
+  const scraperSettings = {};
+  scraperNextInputs.forEach((input, provider) => {
+    if (input.value) {
+      scraperSettings[provider] = { next_page: input.value };
+    }
+  });
+  if (Object.keys(scraperSettings).length) {
+    payload.scrapers = scraperSettings;
   }
 
   try {
@@ -1382,8 +1516,16 @@ async function saveSettings(event) {
       body: JSON.stringify(payload),
     });
     if (success) {
-      currentSettings = { ...currentSettings, ...settings };
-      refreshKinoxSettingsUi();
+      if (settings?.tmdb_api_key !== undefined) {
+        currentSettings.tmdb_api_key = settings.tmdb_api_key;
+      }
+      if (settings?.scrapers) {
+        currentSettings.scrapers = {
+          ...currentSettings.scrapers,
+          ...settings.scrapers,
+        };
+      }
+      refreshScraperSettingsUi();
       showToast('Einstellungen gespeichert.', 'success');
     }
   } catch (_) {
