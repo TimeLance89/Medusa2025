@@ -12,7 +12,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case, func, or_
 from sqlalchemy.engine import make_url
 
-from scrapers.kinox import scrape_page as scrape_kinox_page
+from scrapers import ScraperResult, get_scraper_manager
 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -26,10 +26,14 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
+SCRAPER_MANAGER = get_scraper_manager()
+
 SCRAPER_STATUS_LOCK = Lock()
 SCRAPER_LOG = deque(maxlen=200)
 SCRAPER_STATUS = {
     "running": False,
+    "provider": None,
+    "provider_label": None,
     "start_page": None,
     "current_page": None,
     "next_page": None,
@@ -133,6 +137,18 @@ def set_setting(key: str, value: str) -> Setting:
     db.session.add(setting)
     db.session.commit()
     return setting
+
+
+def _scraper_setting_key(provider: str, suffix: str) -> str:
+    return f"{provider}_{suffix}"
+
+
+def get_scraper_int_setting(provider: str, suffix: str, default: int) -> int:
+    return get_int_setting(_scraper_setting_key(provider, suffix), default)
+
+
+def set_scraper_setting(provider: str, suffix: str, value: int) -> None:
+    set_setting(_scraper_setting_key(provider, suffix), str(value))
 
 
 def get_tmdb_api_key() -> str:
@@ -394,7 +410,12 @@ def _generate_placeholder_tmdb_id() -> int:
     return lowest_placeholder - 1
 
 
-def attach_streaming_link(movie_title: str, streaming_url: str, mirror_info: Optional[str] = None) -> StreamingLink:
+def attach_streaming_link(
+    movie_title: str,
+    streaming_url: str,
+    mirror_info: Optional[str] = None,
+    source_name: str = "Unbekannt",
+) -> StreamingLink:
     """Create or update a streaming link for a movie based on its title."""
     normalized_title = (movie_title or "").strip()
     movie: Optional[Movie] = None
@@ -463,11 +484,11 @@ def attach_streaming_link(movie_title: str, streaming_url: str, mirror_info: Opt
         link = StreamingLink(
             movie=movie,
             url=streaming_url,
-            source_name="Kinox",
+            source_name=source_name,
             mirror_info=mirror_info,
         )
     else:
-        link.source_name = "Kinox"
+        link.source_name = source_name
         link.mirror_info = mirror_info
 
     db.session.add(link)
@@ -506,10 +527,16 @@ def get_scraper_status() -> dict:
     if total_pages > 0:
         progress = max(0.0, min(100.0, (processed_pages / total_pages) * 100.0))
 
+    provider = status.get("provider") or "kinox"
+    status["provider"] = provider
+    if not status.get("provider_label"):
+        scraper = SCRAPER_MANAGER.get_scraper(provider)
+        status["provider_label"] = scraper.label if scraper else provider.title()
+
     if not status.get("next_page"):
-        status["next_page"] = get_int_setting("kinox_next_page", 1)
+        status["next_page"] = get_scraper_int_setting(provider, "next_page", 1)
     if not status.get("last_page"):
-        last_page = get_int_setting("kinox_last_page", 0)
+        last_page = get_scraper_int_setting(provider, "last_page", 0)
         status["last_page"] = last_page or None
 
     status["progress"] = progress
@@ -518,10 +545,14 @@ def get_scraper_status() -> dict:
     return status
 
 
-def _start_kinox_scraper(start_page: int) -> bool:
+def _start_scraper(provider: str, start_page: int) -> bool:
     global SCRAPER_THREAD
 
     now_iso = _now_iso()
+    scraper = SCRAPER_MANAGER.get_scraper(provider)
+    if scraper is None:
+        _append_scraper_log(f"Unbekannter Scraper: {provider}", "error")
+        return False
 
     with SCRAPER_STATUS_LOCK:
         if SCRAPER_STATUS.get("running"):
@@ -529,6 +560,8 @@ def _start_kinox_scraper(start_page: int) -> bool:
         SCRAPER_STATUS.update(
             {
                 "running": True,
+                "provider": provider,
+                "provider_label": scraper.label,
                 "start_page": start_page,
                 "current_page": start_page,
                 "next_page": start_page,
@@ -545,51 +578,78 @@ def _start_kinox_scraper(start_page: int) -> bool:
         )
         SCRAPER_LOG.clear()
 
-    _append_scraper_log(f"Scraper gestartet (ab Seite {start_page}).")
+    _append_scraper_log(
+        f"{scraper.label}-Scraper gestartet (ab Seite {start_page})."
+    )
 
-    thread = Thread(target=_run_kinox_scraper, args=(start_page,), daemon=True)
+    thread = Thread(
+        target=_run_scraper,
+        args=(provider, start_page),
+        daemon=True,
+    )
     with SCRAPER_STATUS_LOCK:
         SCRAPER_THREAD = thread
     thread.start()
     return True
 
 
-def _run_kinox_scraper(start_page: int) -> None:
+def _run_scraper(provider: str, start_page: int) -> None:
     global SCRAPER_THREAD
 
     processed_links = 0
     processed_pages = 0
     page = start_page
+    scraper = SCRAPER_MANAGER.get_scraper(provider)
+    if scraper is None:
+        _append_scraper_log(f"Unbekannter Scraper: {provider}", "error")
+        _set_scraper_status(
+            running=False,
+            error="Scraper nicht gefunden.",
+            message="Scraper nicht verfügbar.",
+            finished_at=_now_iso(),
+        )
+        return
+    provider_label = scraper.label
 
     try:
         with app.app_context():
             while True:
-                _append_scraper_log(f"Seite {page} wird geladen…")
+                _append_scraper_log(
+                    f"[{provider_label}] Seite {page} wird geladen…"
+                )
                 _set_scraper_status(
                     current_page=page,
                     next_page=page,
-                    message=f"Seite {page} wird geladen…",
+                    message=f"{provider_label}: Seite {page} wird geladen…",
                     error=None,
                 )
 
-                def progress_callback(entry: dict) -> None:
-                    title = entry.get("title") or "Unbekannt"
+                def progress_callback(entry: ScraperResult) -> None:
+                    title = entry.title or "Unbekannt"
                     _set_scraper_status(
                         last_title=title,
-                        message=f"Gefunden: {title}",
+                        message=f"{provider_label}: Gefunden {title}",
                         current_page=page,
                     )
 
                 try:
-                    entries = scrape_kinox_page(page, progress_callback=progress_callback)
+                    entries = list(
+                        SCRAPER_MANAGER.scrape_page(
+                            provider,
+                            page,
+                            progress_callback=progress_callback,
+                        )
+                    )
                 except Exception as exc:  # pragma: no cover - network errors are not predictable
                     db.session.rollback()
-                    error_text = f"Fehler beim Laden von Seite {page}: {exc}"
+                    error_text = (
+                        f"[{provider_label}] Fehler beim Laden von Seite {page}: {exc}"
+                    )
                     _append_scraper_log(error_text, "error")
                     _set_scraper_status(
                         running=False,
                         error=str(exc),
-                        message="Fehler beim Laden einer Seite.",
+                        message=f"{provider_label}: Fehler beim Laden einer Seite.",
                         finished_at=_now_iso(),
                         current_page=page,
                         next_page=page,
@@ -597,40 +657,60 @@ def _run_kinox_scraper(start_page: int) -> None:
                     return
 
                 if not entries:
-                    _append_scraper_log(f"Keine Einträge auf Seite {page} gefunden.")
-                    _set_scraper_status(message=f"Keine Einträge auf Seite {page}", last_title=None)
+                    _append_scraper_log(
+                        f"[{provider_label}] Keine Einträge auf Seite {page} gefunden."
+                    )
+                    _set_scraper_status(
+                        message=f"{provider_label}: Keine Einträge auf Seite {page}",
+                        last_title=None,
+                    )
 
                 for entry in entries:
-                    title = entry.get("title") or "Unbekannt"
-                    _set_scraper_status(last_title=title, message=f"Speichere: {title}", error=None)
+                    title = entry.title or "Unbekannt"
+                    _set_scraper_status(
+                        last_title=title,
+                        message=f"{provider_label}: Speichere {title}",
+                        error=None,
+                    )
                     try:
                         attach_streaming_link(
-                            entry.get("title") or title,
-                            entry["streaming_url"],
-                            entry.get("mirror"),
+                            entry.title or title,
+                            entry.streaming_url,
+                            entry.mirror_info,
+                            entry.source_name,
                         )
                         processed_links += 1
                         _set_scraper_status(processed_links=processed_links, error=None)
-                        _append_scraper_log(f"Link gespeichert: {title}", "success")
+                        _append_scraper_log(
+                            f"[{provider_label}] Link gespeichert: {title}", "success"
+                        )
                     except Exception as exc:  # pragma: no cover - depends on DB state
                         db.session.rollback()
-                        _append_scraper_log(f"Fehler beim Speichern von {title}: {exc}", "error")
-                        _set_scraper_status(error=str(exc), message=f"Fehler bei {title}")
+                        _append_scraper_log(
+                            f"[{provider_label}] Fehler beim Speichern von {title}: {exc}",
+                            "error",
+                        )
+                        _set_scraper_status(
+                            error=str(exc),
+                            message=f"{provider_label}: Fehler bei {title}",
+                        )
 
                 processed_pages += 1
                 next_page = page + 1
-                set_setting("kinox_last_page", str(page))
-                set_setting("kinox_next_page", str(next_page))
+                set_scraper_setting(provider, "last_page", page)
+                set_scraper_setting(provider, "next_page", next_page)
                 _set_scraper_status(
                     processed_pages=processed_pages,
-                    message=f"Seite {page} abgeschlossen",
+                    message=f"{provider_label}: Seite {page} abgeschlossen",
                     error=None,
                     current_page=page,
                     next_page=next_page,
                     last_page=page,
                     processed_links=processed_links,
                 )
-                _append_scraper_log(f"Seite {page} abgeschlossen. Nächste Seite: {next_page}.")
+                _append_scraper_log(
+                    f"[{provider_label}] Seite {page} abgeschlossen. Nächste Seite: {next_page}."
+                )
 
                 page = next_page
                 time.sleep(1)
@@ -642,7 +722,7 @@ def _run_kinox_scraper(start_page: int) -> None:
         if still_running:
             _set_scraper_status(
                 running=False,
-                message="Scraper angehalten.",
+                message=f"{provider_label}: Scraper angehalten.",
                 finished_at=_now_iso(),
             )
 
@@ -802,8 +882,8 @@ def serien():
 def scraper_view():
     context = build_library_context()
     context["scraper_status"] = get_scraper_status()
-    context["kinox_next_page"] = get_int_setting("kinox_next_page", 1)
-    context["kinox_last_page"] = get_int_setting("kinox_last_page", 0)
+    context["kinox_next_page"] = get_scraper_int_setting("kinox", "next_page", 1)
+    context["kinox_last_page"] = get_scraper_int_setting("kinox", "last_page", 0)
     return render_template(
         "scraper.html",
         active_page="scraper",
@@ -820,8 +900,8 @@ def settings_view():
         active_page="settings",
         show_detail_panel=False,
         page_title="Medusa – Einstellungen",
-        kinox_next_page=get_int_setting("kinox_next_page", 1),
-        kinox_last_page=get_int_setting("kinox_last_page", 0),
+        kinox_next_page=get_scraper_int_setting("kinox", "next_page", 1),
+        kinox_last_page=get_scraper_int_setting("kinox", "last_page", 0),
     )
 
 
@@ -983,12 +1063,12 @@ def api_scrape_kinox():
             return jsonify({"success": False, "message": "Ungültige Startseite."}), 400
         if start_page < 1:
             return jsonify({"success": False, "message": "Startseite muss größer als 0 sein."}), 400
-        set_setting("kinox_next_page", str(start_page))
-        set_setting("kinox_last_page", str(max(0, start_page - 1)))
+        set_scraper_setting("kinox", "next_page", start_page)
+        set_scraper_setting("kinox", "last_page", max(0, start_page - 1))
     else:
-        start_page = get_int_setting("kinox_next_page", 1)
+        start_page = get_scraper_int_setting("kinox", "next_page", 1)
 
-    started = _start_kinox_scraper(start_page)
+    started = _start_scraper("kinox", start_page)
     status = get_scraper_status()
     message = "Scraper gestartet." if started else "Scraper läuft bereits."
     return jsonify({"success": True, "status": status, "started": started, "message": message})
@@ -1033,8 +1113,8 @@ def api_settings():
         return jsonify(
             {
                 "tmdb_api_key": get_tmdb_api_key(),
-                "kinox_next_page": get_int_setting("kinox_next_page", 1),
-                "kinox_last_page": get_int_setting("kinox_last_page", 0),
+                "kinox_next_page": get_scraper_int_setting("kinox", "next_page", 1),
+                "kinox_last_page": get_scraper_int_setting("kinox", "last_page", 0),
             }
         )
 
@@ -1059,8 +1139,8 @@ def api_settings():
             if next_page < 1:
                 errors["kinox_next_page"] = "Wert muss größer oder gleich 1 sein."
             else:
-                set_setting("kinox_next_page", str(next_page))
-                set_setting("kinox_last_page", str(max(0, next_page - 1)))
+                set_scraper_setting("kinox", "next_page", next_page)
+                set_scraper_setting("kinox", "last_page", max(0, next_page - 1))
                 response_payload["kinox_next_page"] = next_page
                 response_payload["kinox_last_page"] = max(0, next_page - 1)
 
