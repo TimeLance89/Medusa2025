@@ -36,7 +36,7 @@
             <article class="media-card" role="button" tabindex="0"
                      data-movie-id="{{ movie.id }}"
                      data-title="{{ movie.title }}"
-                     data-overview="{{ movie.overview|default('')|e }}"
+                     data-overview="{{ movie.overview|default('', true)|e }}"
                      data-backdrop="{{ backdrop_url }}"
                      data-poster="{{ poster_url }}"
                      data-release="{{ movie.release_date or '' }}">

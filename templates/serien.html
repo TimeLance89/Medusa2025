@@ -30,7 +30,7 @@
             <article class="media-card" role="button" tabindex="0"
                      data-movie-id="{{ show.id }}"
                      data-title="{{ show.title }}"
-                     data-overview="{{ show.overview|default('')|e }}"
+                     data-overview="{{ show.overview|default('', true)|e }}"
                      data-backdrop="{{ backdrop_url }}"
                      data-poster="{{ poster_url }}"
                      data-release="{{ show.release_date or '' }}">
