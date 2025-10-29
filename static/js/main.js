@@ -2421,12 +2421,6 @@ function populateDetail(movie) {
     }
   };
 
-  if (streamingLinks.length) {
-    applyWatchButtonLink(streamingLinks[0], 0);
-  } else {
-    applyWatchButtonLink(null);
-  }
-
   detailFacts.innerHTML = '';
   const facts = [];
   const formattedDate = formatDate(movie.release_date);
@@ -2538,93 +2532,215 @@ function populateDetail(movie) {
 
   detailStreaming.innerHTML = '';
   if (streamingLinks.length) {
-    const wrapper = document.createElement('div');
-    wrapper.classList.add('stream-embed');
+    const area = document.createElement('div');
+    area.classList.add('stream-area');
 
-    const header = document.createElement('div');
-    header.classList.add('stream-embed__header');
+    const primary = document.createElement('div');
+    primary.classList.add('stream-area__primary');
 
-    const selector = document.createElement('div');
-    selector.classList.add('stream-embed__selector');
+    const preview = document.createElement('article');
+    preview.classList.add('stream-preview');
 
-    const selectIdBase = typeof movie.id === 'number' ? movie.id : Date.now();
-    const selectId = `streamSelect-${selectIdBase}`;
-    const label = document.createElement('label');
-    label.classList.add('stream-embed__label');
-    label.setAttribute('for', selectId);
-    label.textContent = 'Quelle auswählen';
+    const previewHead = document.createElement('header');
+    previewHead.classList.add('stream-preview__head');
 
-    const select = document.createElement('select');
-    select.id = selectId;
-    select.classList.add('stream-embed__select');
-    select.setAttribute('aria-label', 'Stream auswählen');
+    const previewBadge = document.createElement('span');
+    previewBadge.classList.add('stream-preview__badge');
+    previewBadge.textContent = 'Aktiver Stream';
 
-    streamingLinks.forEach((link, index) => {
-      const option = document.createElement('option');
-      option.value = String(index);
-      option.textContent = getStreamLabel(link, index);
-      select.appendChild(option);
-    });
+    const previewTitle = document.createElement('h4');
+    previewTitle.classList.add('stream-preview__title');
 
-    selector.appendChild(label);
-    selector.appendChild(select);
+    const previewMeta = document.createElement('p');
+    previewMeta.classList.add('stream-preview__meta');
+
+    previewHead.appendChild(previewBadge);
+    previewHead.appendChild(previewTitle);
+    previewHead.appendChild(previewMeta);
+
+    const frameWrapper = document.createElement('div');
+    frameWrapper.classList.add('stream-preview__frame');
 
     const frame = document.createElement('iframe');
-    frame.classList.add('stream-embed__frame');
     frame.loading = 'lazy';
     frame.allowFullscreen = true;
     frame.referrerPolicy = 'no-referrer';
     frame.setAttribute('allow', 'fullscreen; picture-in-picture');
 
+    frameWrapper.appendChild(frame);
+
+    const previewFooter = document.createElement('div');
+    previewFooter.classList.add('stream-preview__footer');
+
     const fallback = document.createElement('a');
-    fallback.classList.add('stream-embed__link');
+    fallback.classList.add('stream-preview__external');
     fallback.target = '_self';
     fallback.rel = 'noopener';
-    fallback.textContent = 'Stream im aktuellen Tab öffnen';
+    fallback.textContent = 'Im aktuellen Tab öffnen';
+
+    const previewNote = document.createElement('p');
+    previewNote.classList.add('stream-preview__note');
+    previewNote.textContent = 'Bei Problemen kannst du den Stream auch direkt im Browser starten.';
+
+    previewFooter.appendChild(fallback);
+    previewFooter.appendChild(previewNote);
+
+    preview.appendChild(previewHead);
+    preview.appendChild(frameWrapper);
+    preview.appendChild(previewFooter);
+
+    primary.appendChild(preview);
+
+    const sidebar = document.createElement('aside');
+    sidebar.classList.add('stream-area__sidebar');
+
+    const sources = document.createElement('div');
+    sources.classList.add('stream-sources');
+
+    const sourcesHead = document.createElement('header');
+    sourcesHead.classList.add('stream-sources__head');
+
+    const sourcesEyebrow = document.createElement('span');
+    sourcesEyebrow.classList.add('stream-sources__eyebrow');
+    sourcesEyebrow.textContent = 'Quellenübersicht';
+
+    const sourcesTitle = document.createElement('h4');
+    sourcesTitle.classList.add('stream-sources__title');
+    sourcesTitle.textContent = 'Verfügbare Mirrors';
+
+    const sourcesSubtitle = document.createElement('p');
+    sourcesSubtitle.classList.add('stream-sources__subtitle');
+    sourcesSubtitle.textContent = 'Wähle eine Quelle für den Player oder öffne sie direkt.';
+
+    sourcesHead.appendChild(sourcesEyebrow);
+    sourcesHead.appendChild(sourcesTitle);
+    sourcesHead.appendChild(sourcesSubtitle);
+
+    const list = document.createElement('ul');
+    list.classList.add('stream-sources__list');
+
+    const sourceButtons = [];
+
+    const getStreamMeta = (link) => {
+      if (!link) {
+        return 'Keine weiteren Informationen verfügbar.';
+      }
+      const parts = [];
+      if (link.mirror_info && link.mirror_info !== link.source_name) {
+        parts.push(link.mirror_info);
+      }
+      if (link.additional_info) {
+        parts.push(link.additional_info);
+      }
+      if (link.quality) {
+        parts.push(link.quality);
+      }
+      try {
+        const url = new URL(link.url);
+        const host = url.hostname.replace(/^www\./, '');
+        if (host && !parts.includes(host)) {
+          parts.push(host);
+        }
+      } catch (_) {
+        /* ignore invalid urls */
+      }
+      return parts.length ? parts.join(' · ') : 'Direkte Quelle';
+    };
 
     const updateSelection = (index) => {
       const link = streamingLinks[index];
+      sourceButtons.forEach((btn, btnIndex) => {
+        const isActive = btnIndex === index && Boolean(link);
+        btn.classList.toggle('is-active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+
       if (!link) {
-        header.textContent = 'Kein Stream verfügbar';
+        previewTitle.textContent = 'Kein Stream verfügbar';
+        previewMeta.textContent = 'Bitte wähle eine andere Quelle aus.';
         frame.removeAttribute('src');
+        frame.removeAttribute('title');
         fallback.removeAttribute('href');
+        fallback.setAttribute('aria-disabled', 'true');
+        fallback.setAttribute('tabindex', '-1');
         applyIframeSandbox(frame, null);
         applyWatchButtonLink(null);
         return;
       }
+
       const labelText = getStreamLabel(link, index);
-      header.textContent = labelText;
+      previewTitle.textContent = labelText;
+      previewMeta.textContent = getStreamMeta(link);
       if (frame.src !== link.url) {
         frame.src = link.url;
       }
       frame.title = `${labelText} – Stream Player`;
       applyIframeSandbox(frame, link);
       fallback.href = link.url;
+      fallback.removeAttribute('aria-disabled');
+      fallback.removeAttribute('tabindex');
       fallback.setAttribute('aria-label', `Stream ${labelText} im aktuellen Tab öffnen`);
       applyWatchButtonLink(link, index);
     };
 
-    select.addEventListener('change', (event) => {
-      const value = Number(event.target.value);
-      if (Number.isNaN(value)) {
-        updateSelection(0);
-      } else {
-        updateSelection(Math.min(Math.max(value, 0), streamingLinks.length - 1));
-      }
+    streamingLinks.forEach((link, index) => {
+      const item = document.createElement('li');
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.classList.add('stream-source');
+      button.setAttribute('aria-pressed', 'false');
+      button.dataset.streamIndex = String(index);
+
+      const name = document.createElement('span');
+      name.classList.add('stream-source__name');
+      name.textContent = link?.source_name || `Stream ${index + 1}`;
+
+      const meta = document.createElement('span');
+      meta.classList.add('stream-source__meta');
+      meta.textContent = getStreamMeta(link);
+
+      const cta = document.createElement('span');
+      cta.classList.add('stream-source__cta');
+      cta.textContent = 'Zum Player';
+
+      button.appendChild(name);
+      button.appendChild(meta);
+      button.appendChild(cta);
+
+      button.addEventListener('click', () => {
+        updateSelection(index);
+      });
+
+      item.appendChild(button);
+      list.appendChild(item);
+      sourceButtons.push(button);
     });
 
-    updateSelection(0);
+    sources.appendChild(sourcesHead);
+    sources.appendChild(list);
+    sidebar.appendChild(sources);
 
-    wrapper.appendChild(header);
-    wrapper.appendChild(selector);
-    wrapper.appendChild(frame);
-    wrapper.appendChild(fallback);
-    detailStreaming.appendChild(wrapper);
+    area.appendChild(primary);
+    area.appendChild(sidebar);
+
+    detailStreaming.appendChild(area);
+
+    updateSelection(0);
   } else {
-    const empty = document.createElement('p');
-    empty.classList.add('empty');
-    empty.textContent = 'Keine Streams verfügbar.';
+    const empty = document.createElement('div');
+    empty.classList.add('stream-area__empty');
+
+    const emptyTitle = document.createElement('strong');
+    emptyTitle.textContent = 'Keine Streams verfügbar.';
+
+    const emptyText = document.createElement('span');
+    emptyText.textContent = 'Sobald neue Quellen gefunden werden, erscheinen sie automatisch hier.';
+
+    empty.appendChild(emptyTitle);
+    empty.appendChild(emptyText);
     detailStreaming.appendChild(empty);
+    applyWatchButtonLink(null);
   }
 
   const trailer = movie.trailer;
