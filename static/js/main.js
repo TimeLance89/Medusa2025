@@ -2305,6 +2305,31 @@ function populateDetail(movie) {
     return parts.join(' · ');
   };
 
+  const SANDBOX_ATTRIBUTE_VALUE =
+    'allow-same-origin allow-scripts allow-forms allow-pointer-lock allow-fullscreen';
+
+  const shouldUseSandboxForLink = (link) => {
+    if (!link) {
+      return false;
+    }
+    const providerName =
+      (typeof link.provider === 'string' && link.provider.trim()) ||
+      (typeof link.source_name === 'string' && link.source_name.trim()) ||
+      '';
+    return providerName.toLowerCase() === 'kinox';
+  };
+
+  const applyIframeSandbox = (frame, link) => {
+    if (!frame) {
+      return;
+    }
+    if (shouldUseSandboxForLink(link)) {
+      frame.setAttribute('sandbox', SANDBOX_ATTRIBUTE_VALUE);
+    } else {
+      frame.removeAttribute('sandbox');
+    }
+  };
+
   const applyWatchButtonLink = (link, index = 0) => {
     if (!watchButton) {
       return;
@@ -2483,10 +2508,6 @@ function populateDetail(movie) {
     frame.allowFullscreen = true;
     frame.referrerPolicy = 'no-referrer';
     frame.setAttribute('allow', 'fullscreen; picture-in-picture');
-    frame.setAttribute(
-      'sandbox',
-      'allow-same-origin allow-scripts allow-forms allow-pointer-lock allow-fullscreen',
-    );
 
     const fallback = document.createElement('a');
     fallback.classList.add('stream-embed__link');
@@ -2500,6 +2521,7 @@ function populateDetail(movie) {
         header.textContent = 'Kein Stream verfügbar';
         frame.removeAttribute('src');
         fallback.removeAttribute('href');
+        applyIframeSandbox(frame, null);
         applyWatchButtonLink(null);
         return;
       }
@@ -2509,6 +2531,7 @@ function populateDetail(movie) {
         frame.src = link.url;
       }
       frame.title = `${labelText} – Stream Player`;
+      applyIframeSandbox(frame, link);
       fallback.href = link.url;
       fallback.setAttribute('aria-label', `Stream ${labelText} im aktuellen Tab öffnen`);
       applyWatchButtonLink(link, index);
