@@ -609,6 +609,22 @@ body.showing-search {
     z-index: 1;
 }
 
+.hero__content::before {
+    content: '';
+    position: absolute;
+    inset: -35% -20% auto -20%;
+    height: 70%;
+    background: radial-gradient(circle at top left, rgba(88, 166, 255, 0.28), transparent 65%);
+    filter: blur(80px);
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.hero__content > * {
+    position: relative;
+    z-index: 1;
+}
+
 .hero__pretitle {
     text-transform: uppercase;
     letter-spacing: 0.18em;
@@ -645,8 +661,10 @@ body.showing-search {
     gap: 0.35rem;
     padding: 0.3rem 0.55rem;
     border-radius: 999px;
-    background: rgba(12, 16, 28, 0.55);
-    border: 1px solid rgba(120, 144, 255, 0.28);
+    background: rgba(12, 16, 28, 0.68);
+    border: 1px solid rgba(120, 144, 255, 0.4);
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 .hero__actions {
@@ -729,6 +747,200 @@ body.showing-search {
     height: 100%;
     background-size: cover;
     background-position: center;
+}
+
+.hero__poster::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    pointer-events: none;
+}
+
+.library-overview {
+    background: linear-gradient(135deg, rgba(13, 20, 34, 0.92), rgba(9, 15, 28, 0.78));
+    overflow: visible;
+}
+
+.insight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: clamp(1rem, 2.5vw, 1.6rem);
+}
+
+.insight-card {
+    position: relative;
+    display: flex;
+    gap: 1.05rem;
+    align-items: flex-start;
+    padding: 1.35rem 1.5rem;
+    border-radius: var(--radius-lg);
+    background: rgba(8, 12, 23, 0.78);
+    border: 1px solid rgba(120, 144, 255, 0.28);
+    box-shadow: 0 22px 45px rgba(0, 0, 0, 0.36);
+    overflow: hidden;
+}
+
+.insight-card::after {
+    content: '';
+    position: absolute;
+    inset: -45% auto auto -35%;
+    width: 160px;
+    height: 160px;
+    background: radial-gradient(circle, rgba(88, 166, 255, 0.35), transparent 60%);
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.insight-card__icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    background: rgba(88, 166, 255, 0.18);
+    border: 1px solid rgba(88, 166, 255, 0.38);
+    color: var(--accent-strong);
+    flex-shrink: 0;
+}
+
+.insight-card__content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.insight-card__value {
+    font-size: clamp(1.8rem, 3vw, 2.2rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.insight-card__label {
+    font-weight: 500;
+    color: var(--text-secondary);
+    letter-spacing: 0.01em;
+}
+
+.insight-card__detail {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.spotlight-section {
+    background: linear-gradient(140deg, rgba(15, 22, 38, 0.95), rgba(5, 8, 16, 0.85));
+}
+
+.spotlight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: clamp(1.2rem, 2.4vw, 1.8rem);
+}
+
+.spotlight-card {
+    position: relative;
+    border-radius: var(--radius-lg);
+    padding: clamp(1.6rem, 3vw, 2rem);
+    overflow: hidden;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    border: 1px solid rgba(120, 144, 255, 0.28);
+    box-shadow: 0 28px 60px rgba(0, 0, 0, 0.42);
+    transition: transform var(--transition), box-shadow var(--transition);
+    cursor: pointer;
+}
+
+.spotlight-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 35px 70px rgba(0, 0, 0, 0.45);
+}
+
+.spotlight-card__background {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 14, 26, 0.8);
+    background-image: var(--spotlight-image, none);
+    background-size: cover;
+    background-position: center;
+    filter: saturate(1.15) brightness(0.9);
+    opacity: 0.55;
+    transition: opacity var(--transition), transform var(--transition);
+}
+
+.spotlight-card:hover .spotlight-card__background {
+    opacity: 0.72;
+    transform: scale(1.05);
+}
+
+.spotlight-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(5, 8, 16, 0.05) 0%, rgba(5, 7, 15, 0.85) 70%);
+    pointer-events: none;
+}
+
+.spotlight-card__content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.spotlight-card__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    background: rgba(12, 16, 28, 0.75);
+    border: 1px solid rgba(120, 144, 255, 0.38);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.spotlight-card h3 {
+    margin: 0;
+    font-size: clamp(1.4rem, 2.4vw, 1.7rem);
+    line-height: 1.2;
+}
+
+.spotlight-card p {
+    margin: 0;
+    color: var(--text-secondary);
+    max-width: 32ch;
+}
+
+.spotlight-card__actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.spotlight-card__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    text-decoration: none;
+    color: var(--accent-strong);
+    font-weight: 500;
+}
+
+.spotlight-card__link::after {
+    content: '→';
+    font-size: 0.95rem;
+}
+
+.spotlight-card:focus-visible {
+    outline: 2px solid var(--accent-strong);
+    outline-offset: 3px;
 }
 
 .media-promos .promo-grid {
@@ -1993,6 +2205,11 @@ body.showing-detail {
         justify-self: end;
     }
 
+    .library-overview,
+    .spotlight-section {
+        padding: clamp(1.6rem, 5vw, 2.2rem);
+    }
+
     .detail-columns {
         grid-template-columns: 1fr;
     }
@@ -2021,6 +2238,10 @@ body.showing-detail {
         display: none;
     }
 
+    .spotlight-card {
+        min-height: 260px;
+    }
+
     .page-header,
     .settings-reset {
         flex-direction: column;
@@ -2031,6 +2252,11 @@ body.showing-detail {
 @media (max-width: 640px) {
     .media-rail__track {
         grid-auto-columns: minmax(180px, 1fr);
+    }
+
+    .insight-grid,
+    .spotlight-grid {
+        grid-template-columns: 1fr;
     }
 
     .media-grid {
