@@ -20,6 +20,13 @@
 {% set hero_overview = hero_first and hero_first.overview or 'Synchronisiere deine Bibliothek mit TMDB, durchstöbere Sammlungen und starte Streams aus einer eleganten Oberfläche.' %}
 {% set hero_title = hero_first and hero_first.title or 'Willkommen bei Medusa' %}
 {% set hero_movie_id = hero_first and hero_first.id %}
+{% set recent_movies = categories.get('Neu hinzugefügt') or [] %}
+{% set popular_movies = categories.get('Beliebt') or [] %}
+{% set totals = namespace(count=0) %}
+{% for movie_list in categories.values() %}
+    {% set totals.count = totals.count + (movie_list|length) %}
+{% endfor %}
+{% set total_movies = totals.count %}
 
 {% set hero_payload = namespace(items=[]) %}
 {% for movie in hero_movies %}
@@ -42,7 +49,25 @@
         <div class="hero__pretitle">{{ hero_movies|length > 0 and 'Beliebt in deiner Bibliothek' or 'Weiter schauen' }}</div>
         <h1 class="hero__title">{{ hero_title }}</h1>
         <p class="hero__description">{{ hero_overview }}</p>
-        <div class="hero__meta"></div>
+        <div class="hero__meta">
+            {% if hero_first and hero_first.release_date %}
+            {% set release_value = hero_first.release_date.strftime('%d.%m.%Y') if hero_first.release_date is not string and hero_first.release_date.strftime is not undefined else hero_first.release_date %}
+            <span>
+                <span class="material-symbols-outlined" aria-hidden="true">event</span>
+                {{ release_value }}
+            </span>
+            {% endif %}
+            {% if hero_first and hero_first.rating %}
+            <span>
+                <span class="material-symbols-outlined" aria-hidden="true">grade</span>
+                {{ hero_first.rating|round(1) }}/10
+            </span>
+            {% endif %}
+            <span>
+                <span class="material-symbols-outlined" aria-hidden="true">video_library</span>
+                {{ total_movies }} Titel gesamt
+            </span>
+        </div>
         <div class="hero__actions">
             <button class="btn btn-primary" id="detailHeroPlay" type="button"{% if hero_movie_id %} data-movie-id="{{ hero_movie_id }}"{% else %} disabled{% endif %}>
                 <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
@@ -72,6 +97,140 @@
     <script id="heroData" type="application/json">{{ hero_payload.items|tojson }}</script>
     {% endif %}
 </section>
+
+{% set library_stats = [
+    {'icon': 'collections_bookmark', 'label': 'Bibliothekstitel', 'value': total_movies, 'detail': 'Alle verfügbaren Filme & Serien in Medusa'},
+    {'icon': 'auto_awesome', 'label': 'Beliebte Favoriten', 'value': popular_movies|length, 'detail': 'Top bewertete Inhalte aus deiner Sammlung'},
+    {'icon': 'new_releases', 'label': 'Neu hinzugefügt', 'value': recent_movies|length, 'detail': 'Frisch synchronisierte Filme der letzten Zeit'},
+    {'icon': 'link', 'label': 'Streaming-Links aktiv', 'value': scraped|length, 'detail': 'Direkte Quellen aus deinen Scraper-Integrationen'}
+] %}
+<section class="surface library-overview">
+    <header class="section-head">
+        <div>
+            <h2>Deine Bibliothek im Überblick</h2>
+            <p class="section-subtitle">Behalte Favoriten, Neuheiten und Stream-Links aus Medusa im Blick.</p>
+        </div>
+    </header>
+    <div class="insight-grid">
+        {% for stat in library_stats %}
+        <article class="insight-card">
+            <span class="insight-card__icon material-symbols-outlined" aria-hidden="true">{{ stat.icon }}</span>
+            <div class="insight-card__content">
+                <span class="insight-card__value">{{ stat.value }}</span>
+                <span class="insight-card__label">{{ stat.label }}</span>
+                <p class="insight-card__detail">{{ stat.detail }}</p>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+
+{% set spotlight_recent = recent_movies and recent_movies[0] or None %}
+{% set spotlight_recent_poster = spotlight_recent and spotlight_recent.poster_path and 'https://image.tmdb.org/t/p/w780' + spotlight_recent.poster_path or spotlight_recent and spotlight_recent.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + spotlight_recent.backdrop_path or url_for('static', filename='images/poster-placeholder.svg') %}
+{% set spotlight_recent_backdrop = spotlight_recent and spotlight_recent.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + spotlight_recent.backdrop_path or spotlight_recent_poster %}
+{% set spotlight_scraped_ns = namespace(item=None) %}
+{% for link in scraped %}
+    {% if link.movie and not spotlight_scraped_ns.item %}
+        {% set spotlight_scraped_ns.item = link %}
+    {% endif %}
+{% endfor %}
+{% set spotlight_scraped_link = spotlight_scraped_ns.item %}
+{% set spotlight_scraped = spotlight_scraped_link and spotlight_scraped_link.movie or None %}
+{% set spotlight_scraped_poster = spotlight_scraped and spotlight_scraped.poster_path and 'https://image.tmdb.org/t/p/w780' + spotlight_scraped.poster_path or spotlight_scraped and spotlight_scraped.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + spotlight_scraped.backdrop_path or url_for('static', filename='images/poster-placeholder.svg') %}
+{% set spotlight_scraped_backdrop = spotlight_scraped and spotlight_scraped.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + spotlight_scraped.backdrop_path or spotlight_scraped_poster %}
+{% set now_playing_highlight = now_playing_movies and now_playing_movies[0] or None %}
+{% set now_playing_poster = now_playing_highlight and now_playing_highlight.poster_path and 'https://image.tmdb.org/t/p/w780' + now_playing_highlight.poster_path or now_playing_highlight and now_playing_highlight.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + now_playing_highlight.backdrop_path or url_for('static', filename='images/poster-placeholder.svg') %}
+{% set now_playing_backdrop = now_playing_highlight and now_playing_highlight.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + now_playing_highlight.backdrop_path or now_playing_poster %}
+{% if spotlight_recent or spotlight_scraped or now_playing_highlight %}
+<section class="surface spotlight-section">
+    <header class="section-head">
+        <div>
+            <h2>Highlights für heute</h2>
+            <p class="section-subtitle">Kuratiert aus deinen Neuheiten, Scraper-Quellen und den aktuellen Kinostarts.</p>
+        </div>
+    </header>
+    <div class="spotlight-grid">
+        {% if spotlight_recent %}
+        <article class="spotlight-card card" role="button" tabindex="0"
+                 data-movie-id="{{ spotlight_recent.id }}"
+                 data-title="{{ spotlight_recent.title }}"
+                 data-overview="{{ spotlight_recent.overview|default('')|e }}"
+                 data-backdrop="{{ spotlight_recent_backdrop }}"
+                 data-poster="{{ spotlight_recent_poster }}"
+                 data-release="{{ spotlight_recent.release_date or '' }}">
+            <div class="spotlight-card__background" style="--spotlight-image: url('{{ spotlight_recent_backdrop }}');"></div>
+            <div class="spotlight-card__content">
+                <span class="spotlight-card__badge">
+                    <span class="material-symbols-outlined" aria-hidden="true">fiber_new</span>
+                    Neu in deiner Mediathek
+                </span>
+                <h3>{{ spotlight_recent.title }}</h3>
+                <p>{{ spotlight_recent.overview|default('Keine Beschreibung verfügbar.')|truncate(150) }}</p>
+                <div class="spotlight-card__actions">
+                    <button class="btn btn-primary view-detail" type="button" data-movie-id="{{ spotlight_recent.id }}">
+                        <span class="material-symbols-outlined" aria-hidden="true">play_circle</span>
+                        Details ansehen
+                    </button>
+                    <a class="spotlight-card__link" href="{{ url_for('filme') }}" data-navigation="route">Filme erkunden</a>
+                </div>
+            </div>
+        </article>
+        {% endif %}
+        {% if spotlight_scraped %}
+        <article class="spotlight-card card" role="button" tabindex="0"
+                 data-movie-id="{{ spotlight_scraped.id }}"
+                 data-title="{{ spotlight_scraped.title }}"
+                 data-overview="{{ spotlight_scraped.overview|default('')|e }}"
+                 data-backdrop="{{ spotlight_scraped_backdrop }}"
+                 data-poster="{{ spotlight_scraped_poster }}"
+                 data-release="{{ spotlight_scraped.release_date or '' }}">
+            <div class="spotlight-card__background" style="--spotlight-image: url('{{ spotlight_scraped_backdrop }}');"></div>
+            <div class="spotlight-card__content">
+                <span class="spotlight-card__badge">
+                    <span class="material-symbols-outlined" aria-hidden="true">link</span>
+                    {{ spotlight_scraped_link.source_name }}{% if spotlight_scraped_link.mirror_info %} · {{ spotlight_scraped_link.mirror_info }}{% endif %}
+                </span>
+                <h3>{{ spotlight_scraped.title }}</h3>
+                <p>{{ spotlight_scraped.overview|default('Direkter Stream aus deiner Scraper-Integration.')|truncate(150) }}</p>
+                <div class="spotlight-card__actions">
+                    <button class="btn btn-secondary view-detail" type="button" data-movie-id="{{ spotlight_scraped.id }}">
+                        <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                        Stream starten
+                    </button>
+                    <a class="spotlight-card__link" href="{{ url_for('scraper') }}" data-navigation="route">Scraper verwalten</a>
+                </div>
+            </div>
+        </article>
+        {% endif %}
+        {% if now_playing_highlight %}
+        <article class="spotlight-card card" role="button" tabindex="0"
+                 data-movie-id="{{ now_playing_highlight.id }}"
+                 data-title="{{ now_playing_highlight.title }}"
+                 data-overview="{{ now_playing_highlight.overview|default('')|e }}"
+                 data-backdrop="{{ now_playing_backdrop }}"
+                 data-poster="{{ now_playing_poster }}"
+                 data-release="{{ now_playing_highlight.release_date or '' }}">
+            <div class="spotlight-card__background" style="--spotlight-image: url('{{ now_playing_backdrop }}');"></div>
+            <div class="spotlight-card__content">
+                <span class="spotlight-card__badge">
+                    <span class="material-symbols-outlined" aria-hidden="true">movie_filter</span>
+                    Aktuell im Kino
+                </span>
+                <h3>{{ now_playing_highlight.title }}</h3>
+                <p>{{ now_playing_highlight.overview|default('Starte direkt aus deiner Bibliothek.')|truncate(150) }}</p>
+                <div class="spotlight-card__actions">
+                    <button class="btn btn-ghost view-detail" type="button" data-movie-id="{{ now_playing_highlight.id }}">
+                        <span class="material-symbols-outlined" aria-hidden="true">info</span>
+                        Mehr erfahren
+                    </button>
+                    <a class="spotlight-card__link" href="#hero">Zum Hero-Titel</a>
+                </div>
+            </div>
+        </article>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
 
 {% if now_playing_movies %}
 <section class="surface media-rail media-rail--highlight" data-rail>
@@ -215,7 +374,6 @@
 </section>
 {% endif %}
 
-{% set recent_movies = categories.get('Neu hinzugefügt') or [] %}
 {% if recent_movies %}
 <section class="surface media-grid-block">
     <header class="section-head">
