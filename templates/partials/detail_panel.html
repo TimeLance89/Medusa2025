@@ -1,90 +1,92 @@
 <section class="detail-panel" data-section="detail">
     <div class="detail-viewport">
-        <div class="detail-hero" id="detailHero">
-            <div class="detail-hero-media" id="detailBackdrop"></div>
-            <div class="detail-hero-gradient"></div>
-            <div class="detail-hero-content">
-                <div class="detail-hero-top">
-                    <button class="detail-back" type="button" aria-label="Zurück">
-                        <span class="detail-back-icon">←</span>
-                        <span>Zurück</span>
-                    </button>
-                </div>
-                <div class="detail-hero-layout">
-                    <div class="detail-hero-poster">
+        <article class="player-hero" id="detailHero">
+            <div class="player-hero__backdrop" id="detailBackdrop"></div>
+            <div class="player-hero__scrim"></div>
+            <div class="player-hero__inner">
+                <button class="player-hero__back" type="button" aria-label="Zurück">
+                    <span class="player-hero__back-icon">←</span>
+                    <span>Zurück</span>
+                </button>
+                <div class="player-hero__grid">
+                    <figure class="player-hero__poster">
                         <img
                             id="detailPoster"
                             alt="Poster"
                             data-placeholder="{{ url_for('static', filename='images/poster-placeholder.svg') }}"
                         />
-                    </div>
-                    <div class="detail-hero-body">
-                        <div class="detail-hero-head">
+                    </figure>
+                    <div class="player-hero__info">
+                        <header class="player-hero__heading">
                             <h2 id="detailTitle"></h2>
-                            <p id="detailTagline" class="detail-tagline"></p>
-                        </div>
-                        <div class="detail-meta" id="detailMeta"></div>
-                        <p id="detailOverview" class="detail-hero-overview"></p>
-                        <div class="detail-hero-actions">
-                            <button class="detail-action primary" type="button" id="detailWatch" disabled>
-                                <span class="detail-action-icon">▶</span>
+                            <p id="detailTagline" class="player-hero__tagline"></p>
+                        </header>
+                        <div class="player-hero__meta" id="detailMeta"></div>
+                        <p id="detailOverview" class="player-hero__overview"></p>
+                        <div class="player-hero__actions">
+                            <button class="player-button player-button--primary" type="button" id="detailWatch" disabled>
+                                <span class="player-button__icon">▶</span>
                                 <span id="detailWatchLabel">Ansehen</span>
                             </button>
-                            <button class="detail-action ghost" type="button" id="detailTrailerButton" disabled>
-                                <span class="detail-action-icon">🎬</span>
+                            <button class="player-button" type="button" id="detailTrailerButton" disabled>
+                                <span class="player-button__icon">🎬</span>
                                 <span>Trailer</span>
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="detail-content">
-            <div class="detail-main-grid">
-                <div class="detail-main-grid__primary">
-                    <section class="detail-panel-card detail-panel-card--player" aria-labelledby="detailStreamsTitle">
-                        <header class="detail-streams__header">
-                            <div>
-                                <span class="detail-streams__eyebrow">Stream Center</span>
-                                <h3 id="detailStreamsTitle">Verfügbare Quellen</h3>
-                            </div>
-                            <p class="detail-streams__subtitle">
-                                Wähle einen Mirror oder öffne den Stream in einem neuen Tab.
-                            </p>
-                        </header>
-                        <div class="detail-streams__content">
-                            <div id="detailStreaming" class="stream-area" role="region" aria-live="polite"></div>
+        </article>
+        <div class="player-layout">
+            <div class="player-layout__primary">
+                <section class="player-card player-card--streams" aria-labelledby="detailStreamsTitle">
+                    <header class="player-card__header">
+                        <div>
+                            <span class="player-card__eyebrow">Medienplayer</span>
+                            <h3 id="detailStreamsTitle">Verfügbare Quellen</h3>
                         </div>
-                    </section>
-                    <section class="detail-panel-card detail-panel-card--overview">
-                        <header class="detail-panel-card__header">
-                            <h3>Handlung</h3>
-                        </header>
-                        <p id="detailOverviewSecondary"></p>
-                    </section>
-                </div>
-                <aside class="detail-main-grid__aside">
-                    <section class="detail-panel-card detail-panel-card--facts">
-                        <header class="detail-panel-card__header">
-                            <h3>Details</h3>
-                        </header>
-                        <ul id="detailFacts" class="detail-facts"></ul>
-                    </section>
-                </aside>
-            </div>
-            <section class="detail-panel-card detail-panel-card--cast">
-                <div class="detail-panel-card__header detail-panel-card__header--row">
-                    <div>
-                        <h3>Besetzung</h3>
-                        <p class="detail-panel-card__subtitle">Die wichtigsten Schauspieler:innen auf einen Blick</p>
+                        <p class="player-card__subtitle">
+                            Wähle einen Mirror oder öffne den Stream in einem neuen Tab.
+                        </p>
+                    </header>
+                    <div class="player-card__body">
+                        <div id="detailStreaming" class="player-streams" role="region" aria-live="polite"></div>
                     </div>
+                </section>
+                <section class="player-card player-card--overview">
+                    <header class="player-card__header">
+                        <h3>Handlung</h3>
+                    </header>
+                    <div class="player-card__body">
+                        <p id="detailOverviewSecondary"></p>
+                    </div>
+                </section>
+            </div>
+            <aside class="player-layout__aside">
+                <section class="player-card player-card--facts">
+                    <header class="player-card__header">
+                        <h3>Details</h3>
+                    </header>
+                    <div class="player-card__body">
+                        <ul id="detailFacts" class="player-facts"></ul>
+                    </div>
+                </section>
+            </aside>
+        </div>
+        <section class="player-card player-card--cast">
+            <header class="player-card__header player-card__header--row">
+                <div>
+                    <h3>Besetzung</h3>
+                    <p class="player-card__subtitle">Die wichtigsten Schauspieler:innen auf einen Blick</p>
                 </div>
+            </header>
+            <div class="player-card__body">
                 <ul
                     id="detailCast"
-                    class="detail-cast"
+                    class="player-cast"
                     data-placeholder="{{ url_for('static', filename='images/profile-placeholder.svg') }}"
                 ></ul>
-            </section>
-        </div>
+            </div>
+        </section>
     </div>
 </section>
