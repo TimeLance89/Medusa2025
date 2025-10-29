@@ -1319,6 +1319,35 @@ def api_reset_scraped():
 
     removed_links = StreamingLink.query.delete(synchronize_session=False)
     removed_movies = Movie.query.delete(synchronize_session=False)
+    for provider in SCRAPER_MANAGER.available_providers():
+        set_scraper_setting(provider.name, "next_page", 1)
+        set_scraper_setting(provider.name, "last_page", 0)
+
+    with SCRAPER_STATUS_LOCK:
+        for provider in SCRAPER_MANAGER.available_providers():
+            status = SCRAPER_STATUS.get(provider.name)
+            if status is not None:
+                status.update(
+                    {
+                        "running": False,
+                        "start_page": None,
+                        "current_page": None,
+                        "next_page": 1,
+                        "last_page": 0,
+                        "processed_pages": 0,
+                        "total_pages": 0,
+                        "processed_links": 0,
+                        "last_title": None,
+                        "message": "Bereit.",
+                        "error": None,
+                        "started_at": None,
+                        "finished_at": None,
+                    }
+                )
+            log = SCRAPER_LOG.get(provider.name)
+            if log is not None:
+                log.clear()
+
     db.session.commit()
 
     return jsonify(
