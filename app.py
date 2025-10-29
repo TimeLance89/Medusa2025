@@ -599,6 +599,8 @@ def _run_scraper(provider: str, start_page: int) -> None:
     processed_links = 0
     processed_pages = 0
     page = start_page
+    last_completed_page: Optional[int] = None
+    finished_naturally = False
     scraper = SCRAPER_MANAGER.get_scraper(provider)
     if scraper is None:
         _append_scraper_log(f"Unbekannter Scraper: {provider}", "error")
@@ -657,13 +659,26 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     return
 
                 if not entries:
+                    finished_naturally = True
+                    last_page_value = (
+                        last_completed_page
+                        if last_completed_page is not None
+                        else max(0, page - 1)
+                    )
+                    set_scraper_setting(provider, "last_page", last_page_value)
+                    set_scraper_setting(provider, "next_page", 1)
                     _append_scraper_log(
-                        f"[{provider_label}] Keine Einträge auf Seite {page} gefunden."
+                        f"[{provider_label}] Keine weiteren Einträge gefunden. Scraper beendet.",
+                        "success",
                     )
                     _set_scraper_status(
-                        message=f"{provider_label}: Keine Einträge auf Seite {page}",
+                        message=f"{provider_label}: Keine weiteren Einträge gefunden.",
                         last_title=None,
+                        current_page=page,
+                        next_page=1,
+                        last_page=last_page_value or None,
                     )
+                    break
 
                 for entry in entries:
                     title = entry.title or "Unbekannt"
@@ -673,6 +688,33 @@ def _run_scraper(provider: str, start_page: int) -> None:
                         error=None,
                     )
                     try:
+                        existing_link = StreamingLink.query.filter_by(
+                            url=entry.streaming_url
+                        ).first()
+                        if existing_link:
+                            updated = False
+                            if entry.source_name and (
+                                existing_link.source_name != entry.source_name
+                            ):
+                                existing_link.source_name = entry.source_name
+                                updated = True
+                            if entry.mirror_info != existing_link.mirror_info:
+                                existing_link.mirror_info = entry.mirror_info
+                                updated = True
+                            if updated:
+                                db.session.add(existing_link)
+                                db.session.commit()
+                                _append_scraper_log(
+                                    f"[{provider_label}] Link aktualisiert: {title}",
+                                    "success",
+                                )
+                            else:
+                                _append_scraper_log(
+                                    f"[{provider_label}] Link bereits vorhanden: {title}",
+                                    "info",
+                                )
+                            continue
+
                         attach_streaming_link(
                             entry.title or title,
                             entry.streaming_url,
@@ -696,6 +738,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                         )
 
                 processed_pages += 1
+                last_completed_page = page
                 next_page = page + 1
                 set_scraper_setting(provider, "last_page", page)
                 set_scraper_setting(provider, "next_page", next_page)
@@ -714,6 +757,25 @@ def _run_scraper(provider: str, start_page: int) -> None:
 
                 page = next_page
                 time.sleep(1)
+
+            if finished_naturally:
+                final_last_page = (
+                    last_completed_page if last_completed_page is not None else max(0, page - 1)
+                )
+                _set_scraper_status(
+                    running=False,
+                    message=f"{provider_label}: Alle Seiten verarbeitet.",
+                    finished_at=_now_iso(),
+                    current_page=last_completed_page or page,
+                    next_page=1,
+                    last_page=final_last_page or None,
+                    processed_pages=processed_pages,
+                    processed_links=processed_links,
+                )
+                _append_scraper_log(
+                    f"[{provider_label}] Scraper abgeschlossen. Verarbeitete Seiten: {processed_pages}, neue Links: {processed_links}.",
+                    "success",
+                )
     finally:
         db.session.remove()
         with SCRAPER_STATUS_LOCK:
