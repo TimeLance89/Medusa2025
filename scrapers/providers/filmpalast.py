@@ -18,12 +18,22 @@ class FilmpalastScraper(BaseScraper):
 
     BASE_URL = "https://filmpalast.to/movies/new/page/{page}"
     SELECTOR_TITLE = "h2.rb > a.rb"
+    VOE_HOSTNAME = "voe.sx"
+    OFFLINE_MARKER = "404 - Nicht gefunden"
+    REQUEST_HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            " AppleWebKit/537.36 (KHTML, like Gecko)"
+            " Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://filmpalast.to/",
+    }
 
     def scrape_page(
         self, page: int, progress_callback: ProgressCallback = None
     ) -> List[ScraperResult]:
         url = self.BASE_URL.format(page=page)
-        response = requests.get(url, timeout=20)
+        response = requests.get(url, timeout=20, headers=self.REQUEST_HEADERS)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
@@ -59,7 +69,7 @@ class FilmpalastScraper(BaseScraper):
         return urljoin(base_url, href)
 
     def _scrape_detail(self, detail_url: str) -> List[dict[str, Optional[str]]]:
-        response = requests.get(detail_url, timeout=20)
+        response = requests.get(detail_url, timeout=20, headers=self.REQUEST_HEADERS)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
@@ -75,6 +85,10 @@ class FilmpalastScraper(BaseScraper):
                 continue
             streaming_url = anchor["href"].strip()
             streaming_url = self._normalize_streaming_url(streaming_url, detail_url)
+            if not self._is_voe_stream(streaming_url):
+                continue
+            if not self._is_voe_link_online(streaming_url):
+                continue
             results.append(
                 {
                     "url": streaming_url,
@@ -97,6 +111,30 @@ class FilmpalastScraper(BaseScraper):
             parsed = parsed._replace(path="/" + path)
             streaming_url = urlunparse(parsed)
         return streaming_url
+
+    def _is_voe_stream(self, streaming_url: str) -> bool:
+        parsed = urlparse(streaming_url)
+        hostname = parsed.netloc.lower()
+        return hostname.endswith(self.VOE_HOSTNAME)
+
+    def _is_voe_link_online(self, streaming_url: str) -> bool:
+        try:
+            response = requests.get(
+                streaming_url, timeout=20, headers=self.REQUEST_HEADERS
+            )
+        except requests.RequestException:
+            return False
+
+        if response.status_code >= 400:
+            return False
+
+        if not self._is_voe_stream(response.url):
+            return False
+
+        if self.OFFLINE_MARKER.lower() in response.text.lower():
+            return False
+
+        return True
 
 
 __all__ = ["FilmpalastScraper"]
