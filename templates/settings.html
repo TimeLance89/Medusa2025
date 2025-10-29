@@ -17,11 +17,24 @@
                 <input type="text" name="tmdb_api_key" placeholder="z.B. 123abc" required />
                 <span class="form-hint">Wird für die Synchronisation von TMDB benötigt.</span>
             </label>
+            {% for provider in scraper_providers %}
+            {% set settings = scraper_settings.get(provider.name, {}) %}
             <label class="form-field">
-                <span class="form-label">Kinox nächste Seite</span>
-                <input type="number" min="1" name="kinox_next_page" value="{{ kinox_next_page }}" />
-                <span class="form-hint">Der Scraper setzt automatisch fort. Letzte abgeschlossene Seite: <strong id="kinoxLastPage">{{ kinox_last_page or '–' }}</strong>.</span>
+                <span class="form-label">{{ provider.label }} nächste Seite</span>
+                <input
+                    type="number"
+                    min="1"
+                    name="scrapers[{{ provider.name }}][next_page]"
+                    value="{{ settings.next_page }}"
+                    data-scraper-next
+                    data-provider="{{ provider.name }}"
+                />
+                <span class="form-hint">
+                    Der Scraper setzt automatisch fort. Letzte abgeschlossene Seite:
+                    <strong class="scraper-last-page" data-provider="{{ provider.name }}">{{ settings.last_page or '–' }}</strong>.
+                </span>
             </label>
+            {% endfor %}
         </div>
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Einstellungen speichern</button>

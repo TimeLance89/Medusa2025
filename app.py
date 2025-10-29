@@ -29,25 +29,10 @@ db = SQLAlchemy(app)
 SCRAPER_MANAGER = get_scraper_manager()
 
 SCRAPER_STATUS_LOCK = Lock()
-SCRAPER_LOG = deque(maxlen=200)
-SCRAPER_STATUS = {
-    "running": False,
-    "provider": None,
-    "provider_label": None,
-    "start_page": None,
-    "current_page": None,
-    "next_page": None,
-    "last_page": None,
-    "processed_pages": 0,
-    "processed_links": 0,
-    "last_title": None,
-    "message": "Bereit.",
-    "error": None,
-    "started_at": None,
-    "finished_at": None,
-    "last_update": None,
-}
-SCRAPER_THREAD: Optional[Thread] = None
+SCRAPER_LOG_MAXLEN = 200
+SCRAPER_LOG: dict[str, deque] = {}
+SCRAPER_STATUS: dict[str, dict] = {}
+SCRAPER_THREADS: dict[str, Thread] = {}
 
 
 MOVIE_RUNTIME_CACHE: dict[int, Optional[int]] = {}
@@ -149,6 +134,45 @@ def get_scraper_int_setting(provider: str, suffix: str, default: int) -> int:
 
 def set_scraper_setting(provider: str, suffix: str, value: int) -> None:
     set_setting(_scraper_setting_key(provider, suffix), str(value))
+
+
+def _default_scraper_status(provider: str, label: str) -> dict:
+    return {
+        "provider": provider,
+        "provider_label": label,
+        "running": False,
+        "start_page": None,
+        "current_page": None,
+        "next_page": None,
+        "last_page": None,
+        "processed_pages": 0,
+        "total_pages": 0,
+        "processed_links": 0,
+        "last_title": None,
+        "message": "Bereit.",
+        "error": None,
+        "started_at": None,
+        "finished_at": None,
+        "last_update": None,
+        "log": [],
+    }
+
+
+def _initialize_scraper_state(provider: str) -> str:
+    scraper = SCRAPER_MANAGER.get_scraper(provider)
+    if scraper is None:
+        raise ValueError(f"Unbekannter Scraper: {provider}")
+
+    label = scraper.label
+    with SCRAPER_STATUS_LOCK:
+        if provider not in SCRAPER_STATUS:
+            SCRAPER_STATUS[provider] = _default_scraper_status(provider, label)
+        else:
+            SCRAPER_STATUS[provider].setdefault("provider", provider)
+            SCRAPER_STATUS[provider].setdefault("provider_label", label)
+        if provider not in SCRAPER_LOG:
+            SCRAPER_LOG[provider] = deque(maxlen=SCRAPER_LOG_MAXLEN)
+    return label
 
 
 def get_tmdb_api_key() -> str:
@@ -500,38 +524,55 @@ def _now_iso() -> str:
     return datetime.utcnow().isoformat()
 
 
-def _append_scraper_log(message: str, level: str = "info") -> None:
+def _append_scraper_log(provider: str, message: str, level: str = "info") -> None:
+    try:
+        _initialize_scraper_state(provider)
+    except ValueError:
+        return
+
     entry = {"timestamp": _now_iso(), "message": message, "level": level}
     with SCRAPER_STATUS_LOCK:
-        SCRAPER_LOG.append(entry)
+        SCRAPER_LOG[provider].append(entry)
+        SCRAPER_STATUS[provider]["last_update"] = entry["timestamp"]
 
 
-def _set_scraper_status(**kwargs) -> None:
+def _set_scraper_status(provider: str, **kwargs) -> None:
+    try:
+        label = _initialize_scraper_state(provider)
+    except ValueError:
+        return
+
+    timestamp = _now_iso()
     with SCRAPER_STATUS_LOCK:
-        SCRAPER_STATUS.update(kwargs)
-        SCRAPER_STATUS["last_update"] = _now_iso()
+        status = SCRAPER_STATUS[provider]
+        status.update(kwargs)
+        status["provider"] = provider
+        status.setdefault("provider_label", label)
+        status["last_update"] = timestamp
 
 
-def get_scraper_status() -> dict:
+def _collect_scraper_status(provider: str) -> dict:
+    try:
+        label = _initialize_scraper_state(provider)
+    except ValueError:
+        return {}
+
     with SCRAPER_STATUS_LOCK:
-        status = dict(SCRAPER_STATUS)
-        log_entries = list(SCRAPER_LOG)
+        status = dict(SCRAPER_STATUS.get(provider, {}))
+        log_entries = list(SCRAPER_LOG.get(provider, ()))
+
+    status.setdefault("provider", provider)
+    status.setdefault("provider_label", label)
 
     total_pages = status.get("total_pages") or 0
     processed_pages = status.get("processed_pages") or 0
 
-    progress_mode = "determinate" if total_pages else (
-        "indeterminate" if status.get("running") else "idle"
-    )
-    progress = 0.0
-    if total_pages > 0:
+    if total_pages:
         progress = max(0.0, min(100.0, (processed_pages / total_pages) * 100.0))
-
-    provider = status.get("provider") or "kinox"
-    status["provider"] = provider
-    if not status.get("provider_label"):
-        scraper = SCRAPER_MANAGER.get_scraper(provider)
-        status["provider_label"] = scraper.label if scraper else provider.title()
+        progress_mode = "determinate"
+    else:
+        progress = 0.0
+        progress_mode = "indeterminate" if status.get("running") else "idle"
 
     if not status.get("next_page"):
         status["next_page"] = get_scraper_int_setting(provider, "next_page", 1)
@@ -545,23 +586,34 @@ def get_scraper_status() -> dict:
     return status
 
 
+def get_scraper_status(provider: Optional[str] = None) -> dict:
+    if provider:
+        return _collect_scraper_status(provider)
+
+    statuses: dict[str, dict] = {}
+    for scraper in SCRAPER_MANAGER.available_providers():
+        statuses[scraper.name] = _collect_scraper_status(scraper.name)
+    return statuses
+
+
 def _start_scraper(provider: str, start_page: int) -> bool:
-    global SCRAPER_THREAD
+    _initialize_scraper_state(provider)
 
     now_iso = _now_iso()
     scraper = SCRAPER_MANAGER.get_scraper(provider)
     if scraper is None:
-        _append_scraper_log(f"Unbekannter Scraper: {provider}", "error")
+        _append_scraper_log(provider, f"Unbekannter Scraper: {provider}", "error")
         return False
 
     with SCRAPER_STATUS_LOCK:
-        if SCRAPER_STATUS.get("running"):
+        existing_thread = SCRAPER_THREADS.get(provider)
+        if existing_thread and existing_thread.is_alive():
             return False
-        SCRAPER_STATUS.update(
+
+        status = SCRAPER_STATUS[provider]
+        status.update(
             {
                 "running": True,
-                "provider": provider,
-                "provider_label": scraper.label,
                 "start_page": start_page,
                 "current_page": start_page,
                 "next_page": start_page,
@@ -576,10 +628,11 @@ def _start_scraper(provider: str, start_page: int) -> bool:
                 "last_update": now_iso,
             }
         )
-        SCRAPER_LOG.clear()
+        SCRAPER_LOG[provider].clear()
 
     _append_scraper_log(
-        f"{scraper.label}-Scraper gestartet (ab Seite {start_page})."
+        provider,
+        f"{scraper.label}-Scraper gestartet (ab Seite {start_page}).",
     )
 
     thread = Thread(
@@ -588,14 +641,12 @@ def _start_scraper(provider: str, start_page: int) -> bool:
         daemon=True,
     )
     with SCRAPER_STATUS_LOCK:
-        SCRAPER_THREAD = thread
+        SCRAPER_THREADS[provider] = thread
     thread.start()
     return True
 
 
 def _run_scraper(provider: str, start_page: int) -> None:
-    global SCRAPER_THREAD
-
     processed_links = 0
     processed_pages = 0
     page = start_page
@@ -603,8 +654,9 @@ def _run_scraper(provider: str, start_page: int) -> None:
     finished_naturally = False
     scraper = SCRAPER_MANAGER.get_scraper(provider)
     if scraper is None:
-        _append_scraper_log(f"Unbekannter Scraper: {provider}", "error")
+        _append_scraper_log(provider, f"Unbekannter Scraper: {provider}", "error")
         _set_scraper_status(
+            provider,
             running=False,
             error="Scraper nicht gefunden.",
             message="Scraper nicht verfügbar.",
@@ -617,9 +669,10 @@ def _run_scraper(provider: str, start_page: int) -> None:
         with app.app_context():
             while True:
                 _append_scraper_log(
-                    f"[{provider_label}] Seite {page} wird geladen…"
+                    provider, f"[{provider_label}] Seite {page} wird geladen…"
                 )
                 _set_scraper_status(
+                    provider,
                     current_page=page,
                     next_page=page,
                     message=f"{provider_label}: Seite {page} wird geladen…",
@@ -629,6 +682,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                 def progress_callback(entry: ScraperResult) -> None:
                     title = entry.title or "Unbekannt"
                     _set_scraper_status(
+                        provider,
                         last_title=title,
                         message=f"{provider_label}: Gefunden {title}",
                         current_page=page,
@@ -647,8 +701,9 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     error_text = (
                         f"[{provider_label}] Fehler beim Laden von Seite {page}: {exc}"
                     )
-                    _append_scraper_log(error_text, "error")
+                    _append_scraper_log(provider, error_text, "error")
                     _set_scraper_status(
+                        provider,
                         running=False,
                         error=str(exc),
                         message=f"{provider_label}: Fehler beim Laden einer Seite.",
@@ -668,10 +723,12 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     set_scraper_setting(provider, "last_page", last_page_value)
                     set_scraper_setting(provider, "next_page", 1)
                     _append_scraper_log(
+                        provider,
                         f"[{provider_label}] Keine weiteren Einträge gefunden. Scraper beendet.",
                         "success",
                     )
                     _set_scraper_status(
+                        provider,
                         message=f"{provider_label}: Keine weiteren Einträge gefunden.",
                         last_title=None,
                         current_page=page,
@@ -683,6 +740,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                 for entry in entries:
                     title = entry.title or "Unbekannt"
                     _set_scraper_status(
+                        provider,
                         last_title=title,
                         message=f"{provider_label}: Speichere {title}",
                         error=None,
@@ -705,11 +763,13 @@ def _run_scraper(provider: str, start_page: int) -> None:
                                 db.session.add(existing_link)
                                 db.session.commit()
                                 _append_scraper_log(
+                                    provider,
                                     f"[{provider_label}] Link aktualisiert: {title}",
                                     "success",
                                 )
                             else:
                                 _append_scraper_log(
+                                    provider,
                                     f"[{provider_label}] Link bereits vorhanden: {title}",
                                     "info",
                                 )
@@ -722,17 +782,23 @@ def _run_scraper(provider: str, start_page: int) -> None:
                             entry.source_name,
                         )
                         processed_links += 1
-                        _set_scraper_status(processed_links=processed_links, error=None)
+                        _set_scraper_status(
+                            provider, processed_links=processed_links, error=None
+                        )
                         _append_scraper_log(
-                            f"[{provider_label}] Link gespeichert: {title}", "success"
+                            provider,
+                            f"[{provider_label}] Link gespeichert: {title}",
+                            "success",
                         )
                     except Exception as exc:  # pragma: no cover - depends on DB state
                         db.session.rollback()
                         _append_scraper_log(
+                            provider,
                             f"[{provider_label}] Fehler beim Speichern von {title}: {exc}",
                             "error",
                         )
                         _set_scraper_status(
+                            provider,
                             error=str(exc),
                             message=f"{provider_label}: Fehler bei {title}",
                         )
@@ -743,6 +809,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                 set_scraper_setting(provider, "last_page", page)
                 set_scraper_setting(provider, "next_page", next_page)
                 _set_scraper_status(
+                    provider,
                     processed_pages=processed_pages,
                     message=f"{provider_label}: Seite {page} abgeschlossen",
                     error=None,
@@ -752,7 +819,8 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     processed_links=processed_links,
                 )
                 _append_scraper_log(
-                    f"[{provider_label}] Seite {page} abgeschlossen. Nächste Seite: {next_page}."
+                    provider,
+                    f"[{provider_label}] Seite {page} abgeschlossen. Nächste Seite: {next_page}.",
                 )
 
                 page = next_page
@@ -763,6 +831,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     last_completed_page if last_completed_page is not None else max(0, page - 1)
                 )
                 _set_scraper_status(
+                    provider,
                     running=False,
                     message=f"{provider_label}: Alle Seiten verarbeitet.",
                     finished_at=_now_iso(),
@@ -773,20 +842,57 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     processed_links=processed_links,
                 )
                 _append_scraper_log(
+                    provider,
                     f"[{provider_label}] Scraper abgeschlossen. Verarbeitete Seiten: {processed_pages}, neue Links: {processed_links}.",
                     "success",
                 )
     finally:
         db.session.remove()
         with SCRAPER_STATUS_LOCK:
-            SCRAPER_THREAD = None
-            still_running = SCRAPER_STATUS.get("running")
+            SCRAPER_THREADS.pop(provider, None)
+            still_running = SCRAPER_STATUS.get(provider, {}).get("running")
         if still_running:
             _set_scraper_status(
+                provider,
                 running=False,
                 message=f"{provider_label}: Scraper angehalten.",
                 finished_at=_now_iso(),
             )
+
+
+def _start_multiple_scrapers(start_pages: Optional[dict[str, int]] = None) -> dict[str, bool]:
+    pages = start_pages or {}
+    results: dict[str, bool] = {}
+    for scraper in SCRAPER_MANAGER.available_providers():
+        provider = scraper.name
+        page = pages.get(provider)
+        if page is None:
+            page = get_scraper_int_setting(provider, "next_page", 1)
+        else:
+            set_scraper_setting(provider, "next_page", page)
+            set_scraper_setting(provider, "last_page", max(0, page - 1))
+        results[provider] = _start_scraper(provider, page)
+    return results
+
+
+def _extract_start_pages(payload: dict) -> tuple[dict[str, int], dict[str, str]]:
+    start_pages_raw = payload.get("start_pages")
+    if not isinstance(start_pages_raw, dict):
+        return {}, {}
+
+    start_pages: dict[str, int] = {}
+    errors: dict[str, str] = {}
+    for provider, value in start_pages_raw.items():
+        try:
+            page = int(value)
+        except (TypeError, ValueError):
+            errors[provider] = "Ungültige Startseite."
+            continue
+        if page < 1:
+            errors[provider] = "Startseite muss größer als 0 sein."
+            continue
+        start_pages[provider] = page
+    return start_pages, errors
 
 
 def build_library_context() -> dict:
@@ -943,9 +1049,16 @@ def serien():
 @app.route("/scraper")
 def scraper_view():
     context = build_library_context()
-    context["scraper_status"] = get_scraper_status()
-    context["kinox_next_page"] = get_scraper_int_setting("kinox", "next_page", 1)
-    context["kinox_last_page"] = get_scraper_int_setting("kinox", "last_page", 0)
+    providers = SCRAPER_MANAGER.available_providers()
+    context["scraper_providers"] = providers
+    context["scraper_statuses"] = get_scraper_status()
+    context["scraper_settings"] = {
+        provider.name: {
+            "next_page": get_scraper_int_setting(provider.name, "next_page", 1),
+            "last_page": get_scraper_int_setting(provider.name, "last_page", 0),
+        }
+        for provider in providers
+    }
     return render_template(
         "scraper.html",
         active_page="scraper",
@@ -957,13 +1070,20 @@ def scraper_view():
 
 @app.route("/einstellungen")
 def settings_view():
+    providers = SCRAPER_MANAGER.available_providers()
     return render_template(
         "settings.html",
         active_page="settings",
         show_detail_panel=False,
         page_title="Medusa – Einstellungen",
-        kinox_next_page=get_scraper_int_setting("kinox", "next_page", 1),
-        kinox_last_page=get_scraper_int_setting("kinox", "last_page", 0),
+        scraper_providers=providers,
+        scraper_settings={
+            provider.name: {
+                "next_page": get_scraper_int_setting(provider.name, "next_page", 1),
+                "last_page": get_scraper_int_setting(provider.name, "last_page", 0),
+            }
+            for provider in providers
+        },
     )
 
 
@@ -1114,8 +1234,14 @@ def api_movie_detail(movie_id: int):
     return jsonify({"success": True, "movie": movie_payload})
 
 
-@app.route("/api/scrape/kinox", methods=["POST"])
-def api_scrape_kinox():
+@app.route("/api/scrape/<provider>", methods=["POST"])
+@app.route("/api/scrape/kinox", methods=["POST"], defaults={"provider": "kinox"})
+def api_scrape_provider(provider: str):
+    provider = (provider or "").lower()
+    scraper = SCRAPER_MANAGER.get_scraper(provider)
+    if scraper is None:
+        return jsonify({"success": False, "message": "Unbekannter Scraper."}), 404
+
     data = request.get_json(silent=True) or {}
     start_page = data.get("from_page") or data.get("start_page")
     if start_page is not None:
@@ -1125,15 +1251,60 @@ def api_scrape_kinox():
             return jsonify({"success": False, "message": "Ungültige Startseite."}), 400
         if start_page < 1:
             return jsonify({"success": False, "message": "Startseite muss größer als 0 sein."}), 400
-        set_scraper_setting("kinox", "next_page", start_page)
-        set_scraper_setting("kinox", "last_page", max(0, start_page - 1))
+        set_scraper_setting(provider, "next_page", start_page)
+        set_scraper_setting(provider, "last_page", max(0, start_page - 1))
     else:
-        start_page = get_scraper_int_setting("kinox", "next_page", 1)
+        start_page = get_scraper_int_setting(provider, "next_page", 1)
 
-    started = _start_scraper("kinox", start_page)
+    started = _start_scraper(provider, start_page)
     status = get_scraper_status()
-    message = "Scraper gestartet." if started else "Scraper läuft bereits."
-    return jsonify({"success": True, "status": status, "started": started, "message": message})
+    message = (
+        f"{scraper.label}-Scraper gestartet." if started else f"{scraper.label}-Scraper läuft bereits."
+    )
+    started_map = {provider: started}
+    return jsonify(
+        {
+            "success": True,
+            "status": status,
+            "started": started_map,
+            "started_any": any(started_map.values()),
+            "message": message,
+        }
+    )
+
+
+@app.route("/api/scrape/all", methods=["POST"])
+def api_scrape_all():
+    data = request.get_json(silent=True) or {}
+    start_pages, errors = _extract_start_pages(data)
+    if errors:
+        return jsonify({"success": False, "errors": errors}), 400
+
+    started_map = _start_multiple_scrapers(start_pages)
+    status = get_scraper_status()
+    started_providers = [
+        SCRAPER_MANAGER.get_scraper(provider).label
+        for provider, started in started_map.items()
+        if started and SCRAPER_MANAGER.get_scraper(provider)
+    ]
+
+    if started_providers:
+        if len(started_providers) == len(started_map):
+            message = "Alle Scraper laufen im Hintergrund."
+        else:
+            message = f"Scraper gestartet: {', '.join(started_providers)}."
+    else:
+        message = "Scraper laufen bereits."
+
+    return jsonify(
+        {
+            "success": True,
+            "status": status,
+            "started": started_map,
+            "started_any": any(started_map.values()),
+            "message": message,
+        }
+    )
 
 
 @app.route("/api/scrape/status")
@@ -1172,11 +1343,17 @@ def api_tmdb(category: str):
 @app.route("/api/settings", methods=["GET", "POST"])
 def api_settings():
     if request.method == "GET":
+        scraper_settings = {
+            provider.name: {
+                "next_page": get_scraper_int_setting(provider.name, "next_page", 1),
+                "last_page": get_scraper_int_setting(provider.name, "last_page", 0),
+            }
+            for provider in SCRAPER_MANAGER.available_providers()
+        }
         return jsonify(
             {
                 "tmdb_api_key": get_tmdb_api_key(),
-                "kinox_next_page": get_scraper_int_setting("kinox", "next_page", 1),
-                "kinox_last_page": get_scraper_int_setting("kinox", "last_page", 0),
+                "scrapers": scraper_settings,
             }
         )
 
@@ -1192,22 +1369,56 @@ def api_settings():
     elif data.get("tmdb_api_key") is not None:
         errors["tmdb_api_key"] = "TMDB API Key darf nicht leer sein."
 
-    if "kinox_next_page" in data:
-        try:
-            next_page = int(data["kinox_next_page"])
-        except (TypeError, ValueError):
-            errors["kinox_next_page"] = "Ungültige Zahl."
-        else:
+    scraper_updates: dict[str, dict] = {}
+
+    scrapers_data = data.get("scrapers")
+    if isinstance(scrapers_data, dict):
+        for provider, values in scrapers_data.items():
+            if SCRAPER_MANAGER.get_scraper(provider) is None:
+                continue
+            next_page_value = (values or {}).get("next_page")
+            if next_page_value is None:
+                continue
+            try:
+                next_page = int(next_page_value)
+            except (TypeError, ValueError):
+                errors[f"{provider}_next_page"] = "Ungültige Zahl."
+                continue
             if next_page < 1:
-                errors["kinox_next_page"] = "Wert muss größer oder gleich 1 sein."
-            else:
-                set_scraper_setting("kinox", "next_page", next_page)
-                set_scraper_setting("kinox", "last_page", max(0, next_page - 1))
-                response_payload["kinox_next_page"] = next_page
-                response_payload["kinox_last_page"] = max(0, next_page - 1)
+                errors[f"{provider}_next_page"] = "Wert muss größer oder gleich 1 sein."
+                continue
+            set_scraper_setting(provider, "next_page", next_page)
+            set_scraper_setting(provider, "last_page", max(0, next_page - 1))
+            scraper_updates[provider] = {
+                "next_page": next_page,
+                "last_page": max(0, next_page - 1),
+            }
+
+    # Backwards compatibility for legacy fields
+    for scraper in SCRAPER_MANAGER.available_providers():
+        key = f"{scraper.name}_next_page"
+        if key not in data:
+            continue
+        try:
+            next_page = int(data[key])
+        except (TypeError, ValueError):
+            errors[key] = "Ungültige Zahl."
+            continue
+        if next_page < 1:
+            errors[key] = "Wert muss größer oder gleich 1 sein."
+            continue
+        set_scraper_setting(scraper.name, "next_page", next_page)
+        set_scraper_setting(scraper.name, "last_page", max(0, next_page - 1))
+        scraper_updates[scraper.name] = {
+            "next_page": next_page,
+            "last_page": max(0, next_page - 1),
+        }
 
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
+
+    if scraper_updates:
+        response_payload["scrapers"] = scraper_updates
 
     return jsonify({"success": True, "settings": response_payload})
 
