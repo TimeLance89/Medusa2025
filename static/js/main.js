@@ -2172,7 +2172,7 @@ watchButton?.addEventListener('click', () => {
   }
   const streamUrl = watchButton.dataset.streamUrl;
   if (streamUrl) {
-    window.open(streamUrl, '_blank', 'noopener');
+    window.location.assign(streamUrl);
   } else if (detailStreaming) {
     detailStreaming.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
