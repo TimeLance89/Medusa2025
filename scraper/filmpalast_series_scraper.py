@@ -31,6 +31,55 @@ from scrapers.base import ScraperResult
 from scrapers.providers.filmpalast import FilmpalastSeriesScraper
 
 
+class ScriptFilmpalastSeriesScraper(FilmpalastSeriesScraper):
+    """Filmpalast series scraper tuned for the standalone script."""
+
+    #: Hosts that should be persisted when scraping.
+    ALLOWED_HOST_TYPES = frozenset({"veev", "voe"})
+
+    def _parse_stream_links(self, soup, detail_url):  # type: ignore[override]
+        """Return only relevant stream links for the CLI scraper."""
+
+        results = []
+        for host_item in soup.select("li.hostBg"):
+            host_name_elem = host_item.select_one(".hostName")
+            host_name = host_name_elem.get_text(strip=True) if host_name_elem else None
+            link_item = host_item.find_next_sibling("li", class_="streamPlayBtn")
+            if not link_item:
+                continue
+            anchor = link_item.find("a")
+            if not anchor:
+                continue
+
+            streaming_url = (
+                anchor.get("data-player-url")
+                or anchor.get("href")
+                or ""
+            ).strip()
+            if not streaming_url:
+                continue
+            streaming_url = self._normalize_streaming_url(streaming_url, detail_url)
+
+            host_type = self._identify_host_type(streaming_url)
+            if host_type is None or host_type not in self.ALLOWED_HOST_TYPES:
+                continue
+
+            if host_type == "veev" and host_name and "veev" not in host_name.lower():
+                continue
+            if not self._is_stream_online(streaming_url, host_type):
+                continue
+
+            results.append(
+                {
+                    "url": streaming_url,
+                    "mirror_info": host_name,
+                    "host_name": host_name,
+                    "host_type": host_type,
+                }
+            )
+        return results
+
+
 LOGGER = logging.getLogger("filmpalast_series_scraper")
 PROVIDER_NAME = "filmpalast_series"
 SETTING_SUFFIX_PAGE = "page"
@@ -154,7 +203,7 @@ def run_scraper(
     """Execute the scraper logic for optional integration into the app."""
 
     args = argparse.Namespace(page=page, reset=reset)
-    scraper = FilmpalastSeriesScraper()
+    scraper = ScriptFilmpalastSeriesScraper()
 
     with app.app_context():
         start_page = get_start_page(args)
