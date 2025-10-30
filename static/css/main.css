@@ -151,9 +151,14 @@ button {
 
 .topbar {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+        "brand actions"
+        "nav nav";
     align-items: center;
-    gap: clamp(1.25rem, 2.5vw, 2.5rem);
+    column-gap: clamp(1.25rem, 2.5vw, 2.5rem);
+    row-gap: clamp(0.9rem, 1.6vw, 1.2rem);
     padding: clamp(1.25rem, 2vw, 1.8rem) clamp(1.5rem, 3vw, 2.5rem);
     background: linear-gradient(135deg, rgba(16, 22, 37, 0.95), rgba(28, 34, 49, 0.88));
     border-radius: var(--radius-xl);
@@ -166,6 +171,8 @@ button {
     display: flex;
     align-items: center;
     gap: 1rem;
+    grid-area: brand;
+    justify-self: flex-start;
 }
 
 .brand-logo {
@@ -195,11 +202,15 @@ button {
 }
 
 .topbar__nav {
+    grid-area: nav;
+    width: 100%;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: clamp(0.85rem, 2vw, 1.75rem);
-    padding: 0.45rem 0.85rem;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    column-gap: clamp(0.75rem, 1.8vw, 1.4rem);
+    row-gap: 0.6rem;
+    padding: 0.5rem clamp(0.7rem, 1.8vw, 1.15rem);
     border-radius: var(--radius-lg);
     background: rgba(12, 16, 28, 0.65);
     border: 1px solid rgba(120, 144, 255, 0.18);
@@ -241,10 +252,12 @@ button {
 }
 
 .topbar__actions {
+    grid-area: actions;
     display: flex;
     align-items: center;
     gap: 0.75rem;
     min-width: 0;
+    justify-self: flex-end;
 }
 
 .topbar-search {
@@ -3935,6 +3948,11 @@ body.showing-detail {
 @media (max-width: 900px) {
     .topbar {
         grid-template-columns: 1fr;
+        grid-template-areas:
+            "brand"
+            "nav"
+            "actions";
+        row-gap: clamp(1rem, 3vw, 1.5rem);
     }
 
     .topbar__nav {
@@ -3945,6 +3963,7 @@ body.showing-detail {
     .topbar__actions {
         justify-content: flex-start;
         flex-wrap: wrap;
+        justify-self: stretch;
     }
 
     .topbar__profile {
