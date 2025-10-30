@@ -333,7 +333,7 @@ class Movie(db.Model):
         "StreamingLink",
         back_populates="movie",
         cascade="all, delete-orphan",
-        lazy="joined",
+        lazy="selectin",
     )
 
     def to_dict(self) -> dict:
@@ -545,15 +545,83 @@ class Setting(db.Model):
     value = db.Column(db.String(255), nullable=False)
 
 
+MOVIE_CREATED_AT_INDEX = db.Index("ix_movies_created_at", Movie.created_at)
+MOVIE_RATING_INDEX = db.Index("ix_movies_rating", Movie.rating)
+STREAMING_LINK_MOVIE_INDEX = db.Index(
+    "ix_streaming_links_movie_id", StreamingLink.movie_id
+)
+STREAMING_LINK_MOVIE_TRIMMED_URL_INDEX = db.Index(
+    "ix_streaming_links_movie_trimmed_url",
+    StreamingLink.movie_id,
+    func.trim(StreamingLink.url),
+)
+STREAMING_LINK_SOURCE_INDEX = db.Index(
+    "ix_streaming_links_source_name", StreamingLink.source_name
+)
+SERIES_UPDATED_AT_INDEX = db.Index("ix_series_updated_at", Series.updated_at)
+SERIES_RATING_INDEX = db.Index("ix_series_rating", Series.rating)
+SERIES_SEASON_SERIES_INDEX = db.Index(
+    "ix_series_seasons_series_id", SeriesSeason.series_id
+)
+SERIES_EPISODE_SEASON_INDEX = db.Index(
+    "ix_series_episodes_season_id", SeriesEpisode.season_id
+)
+EPISODE_STREAMING_EPISODE_INDEX = db.Index(
+    "ix_episode_streaming_links_episode_id", EpisodeStreamingLink.episode_id
+)
+EPISODE_STREAMING_EPISODE_TRIMMED_INDEX = db.Index(
+    "ix_episode_streaming_links_episode_trimmed_url",
+    EpisodeStreamingLink.episode_id,
+    func.trim(EpisodeStreamingLink.url),
+)
+USER_VIEW_CONTENT_CREATED_INDEX = db.Index(
+    "ix_user_view_events_content_type_created_at",
+    UserViewEvent.content_type,
+    UserViewEvent.created_at,
+)
+USER_VIEW_MOVIE_INDEX = db.Index(
+    "ix_user_view_events_movie_id", UserViewEvent.movie_id
+)
+USER_VIEW_SERIES_INDEX = db.Index(
+    "ix_user_view_events_series_id", UserViewEvent.series_id
+)
+USER_VIEW_EPISODE_INDEX = db.Index(
+    "ix_user_view_events_episode_id", UserViewEvent.episode_id
+)
+
+DATABASE_INDEXES = (
+    MOVIE_CREATED_AT_INDEX,
+    MOVIE_RATING_INDEX,
+    STREAMING_LINK_MOVIE_INDEX,
+    STREAMING_LINK_MOVIE_TRIMMED_URL_INDEX,
+    STREAMING_LINK_SOURCE_INDEX,
+    SERIES_UPDATED_AT_INDEX,
+    SERIES_RATING_INDEX,
+    SERIES_SEASON_SERIES_INDEX,
+    SERIES_EPISODE_SEASON_INDEX,
+    EPISODE_STREAMING_EPISODE_INDEX,
+    EPISODE_STREAMING_EPISODE_TRIMMED_INDEX,
+    USER_VIEW_CONTENT_CREATED_INDEX,
+    USER_VIEW_MOVIE_INDEX,
+    USER_VIEW_SERIES_INDEX,
+    USER_VIEW_EPISODE_INDEX,
+)
+
+
+def _has_non_empty_text(column):
+    trimmed = func.trim(column)
+    return trimmed != ""
+
+
 def movie_has_valid_streaming_link():
-    return Movie.streaming_links.any(func.length(func.trim(StreamingLink.url)) > 0)
+    return Movie.streaming_links.any(_has_non_empty_text(StreamingLink.url))
 
 
 def series_has_valid_streaming_link():
     return Series.seasons.any(
         SeriesSeason.episodes.any(
             SeriesEpisode.streaming_links.any(
-                func.length(func.trim(EpisodeStreamingLink.url)) > 0
+                _has_non_empty_text(EpisodeStreamingLink.url)
             )
         )
     )
@@ -686,6 +754,13 @@ def ensure_database() -> None:
                 db_path = os.path.join(BASE_DIR, db_path)
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
         db.create_all()
+        ensure_database_indexes()
+
+
+def ensure_database_indexes() -> None:
+    engine = db.engine
+    for index in DATABASE_INDEXES:
+        index.create(bind=engine, checkfirst=True)
 
 
 def fetch_tmdb_movies(category: str = "popular", page: int = 1) -> List[dict]:
@@ -2193,7 +2268,7 @@ def build_library_context() -> dict:
         film_sections.append({"title": "Mit Streaming Links", "items": linked_movies})
 
     series_sections: List[dict] = []
-    episode_link_filter = func.length(func.trim(EpisodeStreamingLink.url)) > 0
+    episode_link_filter = _has_non_empty_text(EpisodeStreamingLink.url)
     series_query = (
         Series.query.join(SeriesSeason)
         .join(SeriesEpisode)
