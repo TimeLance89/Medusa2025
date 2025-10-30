@@ -5,55 +5,124 @@
 {% block main %}
 <section class="profile-hero surface">
     <div class="profile-hero__inner">
+        {% if profile_message %}
+            <div class="profile-alert profile-alert--success" role="status">
+                <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+                <span>{{ profile_message }}</span>
+            </div>
+        {% endif %}
+        {% if profile_error %}
+            <div class="profile-alert profile-alert--error" role="alert">
+                <span class="material-symbols-outlined" aria-hidden="true">error</span>
+                <span>{{ profile_error }}</span>
+            </div>
+        {% endif %}
         <div class="profile-hero__header">
-            <div class="profile-hero__avatar" role="img" aria-label="Profilbild von {{ user_profile.name }}">
-                <span>{{ user_profile.avatar_initials }}</span>
+            <div class="profile-hero__avatar" role="img" aria-label="Profilbild">
+                <span>{{ user_profile.avatar_initials or '--' }}</span>
             </div>
             <div class="profile-hero__identity">
-                <h1>{{ user_profile.name }}</h1>
-                <p class="profile-hero__role">{{ user_profile.role }}</p>
-                {% if user_profile.favorite_genres %}
-                    <div class="profile-preferences" aria-label="Lieblingsgenres">
+                <h1>{{ user_profile.name or 'Profil ohne Namen' }}</h1>
+                <p class="profile-hero__role">
+                    {{ user_profile.role or 'Füge eine Beschreibung deiner Rolle hinzu.' }}
+                </p>
+                <div class="profile-preferences" aria-label="Lieblingsgenres">
+                    {% if user_profile.favorite_genres %}
                         {% for genre in user_profile.favorite_genres %}
                             <span class="chip chip--accent">{{ genre }}</span>
                         {% endfor %}
-                    </div>
-                {% endif %}
+                    {% else %}
+                        <span class="chip chip--ghost">Keine Genres gespeichert</span>
+                    {% endif %}
+                </div>
             </div>
         </div>
-        <p class="profile-hero__bio">{{ user_profile.bio }}</p>
+        <p class="profile-hero__bio">
+            {{ user_profile.bio or 'Beschreibe dich selbst im Profilbereich, um hier mehr über dich zu zeigen.' }}
+        </p>
         <ul class="profile-hero__meta">
             <li>
                 <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
-                <span>Mitglied seit {{ user_profile.membership_since_display }}</span>
+                <span>Mitglied seit {{ user_profile.membership_since_display or 'Unbekannt' }}</span>
             </li>
             <li>
                 <span class="material-symbols-outlined" aria-hidden="true">location_on</span>
-                <span>{{ user_profile.location }}</span>
+                <span>{{ user_profile.location or 'Kein Ort hinterlegt' }}</span>
             </li>
             <li>
                 <span class="material-symbols-outlined" aria-hidden="true">mail</span>
-                <span>{{ user_profile.email }}</span>
+                <span>{{ user_profile.email or 'Keine E-Mail hinterlegt' }}</span>
             </li>
         </ul>
         <div class="profile-stats" role="list" aria-label="Profilstatistiken">
             <div class="profile-stat" role="listitem">
                 <span class="profile-stat__label">Zuletzt angesehen</span>
-                <span class="profile-stat__value">{{ user_profile.recent_count }}</span>
+                <span class="profile-stat__value">{{ user_profile.recent_count or 0 }}</span>
                 <span class="profile-stat__hint">Inhalte der letzten Sitzungen</span>
             </div>
             <div class="profile-stat" role="listitem">
                 <span class="profile-stat__label">Filme in der Bibliothek</span>
-                <span class="profile-stat__value">{{ user_profile.library_stats.movies }}</span>
+                <span class="profile-stat__value">{{ user_profile.library_stats.movies or 0 }}</span>
                 <span class="profile-stat__hint">Aktuell verfügbar</span>
             </div>
             <div class="profile-stat" role="listitem">
                 <span class="profile-stat__label">Serien &amp; Episoden</span>
-                <span class="profile-stat__value">{{ user_profile.library_stats.series }}</span>
-                <span class="profile-stat__hint">{{ user_profile.library_stats.episodes }} Episoden insgesamt</span>
+                <span class="profile-stat__value">{{ user_profile.library_stats.series or 0 }}</span>
+                <span class="profile-stat__hint">{{ user_profile.library_stats.episodes or 0 }} Episoden insgesamt</span>
             </div>
         </div>
     </div>
+</section>
+
+<section class="surface profile-section">
+    <header class="profile-section__head">
+        <div>
+            <h2>Profil anpassen</h2>
+            <p>Aktualisiere hier deine persönlichen Angaben und Vorlieben.</p>
+        </div>
+    </header>
+    <form method="post" class="profile-form" novalidate>
+        <div class="profile-form__grid">
+            <label class="profile-form__field" for="profileName">
+                <span>Name</span>
+                <input id="profileName" type="text" name="name" value="{{ user_profile.name }}" placeholder="Dein Name" />
+            </label>
+            <label class="profile-form__field" for="profileRole">
+                <span>Rolle / Titel</span>
+                <input id="profileRole" type="text" name="role" value="{{ user_profile.role }}" placeholder="z.&nbsp;B. Serienfan" />
+            </label>
+            <label class="profile-form__field" for="profileAvatar">
+                <span>Avatar-Kürzel</span>
+                <input id="profileAvatar" type="text" name="avatar_initials" value="{{ user_profile.avatar_initials_value }}" maxlength="4" placeholder="Initialen" />
+            </label>
+            <label class="profile-form__field" for="profileEmail">
+                <span>E-Mail-Adresse</span>
+                <input id="profileEmail" type="email" name="email" value="{{ user_profile.email }}" placeholder="name@example.com" />
+            </label>
+            <label class="profile-form__field" for="profileLocation">
+                <span>Ort</span>
+                <input id="profileLocation" type="text" name="location" value="{{ user_profile.location }}" placeholder="Stadt, Land" />
+            </label>
+            <label class="profile-form__field" for="profileMemberSince">
+                <span>Mitglied seit</span>
+                <input id="profileMemberSince" type="date" name="membership_since" value="{{ user_profile.membership_since_value }}" />
+            </label>
+            <label class="profile-form__field profile-form__field--full" for="profileGenres">
+                <span>Lieblingsgenres (Kommagetrennt)</span>
+                <input id="profileGenres" type="text" name="favorite_genres" value="{{ user_profile.favorite_genres | join(', ') }}" placeholder="Drama, Thriller, Komödie" />
+            </label>
+            <label class="profile-form__field profile-form__field--full" for="profileBio">
+                <span>Über dich</span>
+                <textarea id="profileBio" name="bio" rows="4" placeholder="Was macht dein Streaming-Profil aus?">{{ user_profile.bio }}</textarea>
+            </label>
+        </div>
+        <div class="profile-form__actions">
+            <button type="submit" class="btn btn-primary">
+                <span class="material-symbols-outlined" aria-hidden="true">save</span>
+                <span>Änderungen speichern</span>
+            </button>
+        </div>
+    </form>
 </section>
 
 <section class="surface profile-section">

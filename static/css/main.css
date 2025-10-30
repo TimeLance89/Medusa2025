@@ -856,6 +856,36 @@ body.showing-search {
     gap: 0.5rem;
 }
 
+.profile-alert {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 1rem;
+    border-radius: var(--radius-lg);
+    font-weight: 500;
+    font-size: 0.95rem;
+    background: rgba(120, 144, 255, 0.12);
+    border: 1px solid rgba(120, 144, 255, 0.25);
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.profile-alert .material-symbols-outlined {
+    font-size: 1.2rem;
+}
+
+.profile-alert--success {
+    background: rgba(76, 175, 80, 0.15);
+    border-color: rgba(76, 175, 80, 0.35);
+    color: #8de99f;
+}
+
+.profile-alert--error {
+    background: rgba(244, 67, 54, 0.15);
+    border-color: rgba(244, 67, 54, 0.35);
+    color: #ffb9b0;
+}
+
 .profile-stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -898,6 +928,64 @@ body.showing-search {
     gap: 1rem;
     flex-wrap: wrap;
     margin-bottom: clamp(1rem, 3vw, 1.6rem);
+}
+
+.profile-form {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.profile-form__grid {
+    display: grid;
+    gap: 1.2rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-form__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+}
+
+.profile-form__field span {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.profile-form__field input,
+.profile-form__field textarea {
+    width: 100%;
+    padding: 0.75rem 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(120, 144, 255, 0.25);
+    background: rgba(12, 16, 28, 0.75);
+    color: var(--text-primary);
+    font: inherit;
+    resize: vertical;
+}
+
+.profile-form__field input:focus,
+.profile-form__field textarea:focus {
+    outline: none;
+    border-color: rgba(120, 144, 255, 0.55);
+    box-shadow: 0 0 0 3px rgba(120, 144, 255, 0.2);
+}
+
+.profile-form__field--full {
+    grid-column: 1 / -1;
+}
+
+.profile-form__actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.profile-form__actions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .profile-section__head h2 {

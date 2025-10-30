@@ -74,10 +74,10 @@
                 <div class="topbar__profile">
                     <a href="{{ url_for('profile_view') }}" class="topbar-profile__trigger" aria-label="Zum Benutzerprofil">
                         <div class="avatar topbar-profile__avatar" role="img" aria-label="Benutzerprofil">
-                            <span>{{ user_profile.avatar_initials }}</span>
+                            <span>{{ user_profile.avatar_initials or '--' }}</span>
                         </div>
                         <div class="topbar-profile__details">
-                            <span class="topbar-profile__name">{{ user_profile.name }}</span>
+                            <span class="topbar-profile__name">{{ user_profile.name or 'Profil' }}</span>
                             <span class="topbar-profile__meta">
                                 {% if latest_view %}
                                     Zuletzt angesehen: {{ latest_view.title }}
@@ -91,12 +91,12 @@
                     <div class="topbar-profile__dropdown" role="menu" aria-label="Benutzeraktionen">
                         <div class="topbar-profile__header">
                             <div class="avatar topbar-profile__avatar topbar-profile__avatar--lg" aria-hidden="true">
-                                <span>{{ user_profile.avatar_initials }}</span>
+                                <span>{{ user_profile.avatar_initials or '--' }}</span>
                             </div>
                             <div>
-                                <p class="topbar-profile__welcome">Hallo, {{ user_profile.name }}</p>
-                                <p class="topbar-profile__role">{{ user_profile.role }}</p>
-                                <p class="topbar-profile__since">Mitglied seit {{ user_profile.membership_since_display }}</p>
+                                <p class="topbar-profile__welcome">Hallo, {{ user_profile.name or 'Profil' }}</p>
+                                <p class="topbar-profile__role">{{ user_profile.role or 'Keine Rolle angegeben' }}</p>
+                                <p class="topbar-profile__since">Mitglied seit {{ user_profile.membership_since_display or 'Unbekannt' }}</p>
                             </div>
                         </div>
                         <div class="topbar-profile__recent">
