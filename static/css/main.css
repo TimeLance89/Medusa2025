@@ -2776,3 +2776,288 @@ body.showing-detail {
         padding-top: 0;
     }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Filme – Alle                                                               */
+/* -------------------------------------------------------------------------- */
+
+.collection-hero {
+    display: grid;
+    gap: clamp(1.5rem, 3vw, 2.5rem);
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+}
+
+@media (min-width: 1100px) {
+    .collection-hero {
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+    }
+}
+
+.collection-hero__content {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1.2rem, 2vw, 1.8rem);
+}
+
+.collection-hero__title {
+    margin: 0;
+    font-size: clamp(2rem, 4vw, 2.8rem);
+    letter-spacing: -0.01em;
+}
+
+.collection-hero__subtitle {
+    margin: 0;
+    color: var(--text-secondary);
+    max-width: 60ch;
+}
+
+.collection-hero__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+}
+
+.collection-stat {
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, rgba(88, 166, 255, 0.18), rgba(37, 47, 78, 0.35));
+    border: 1px solid rgba(120, 144, 255, 0.18);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.collection-stat--highlight {
+    background: linear-gradient(135deg, rgba(255, 138, 101, 0.18), rgba(37, 47, 78, 0.35));
+    border-color: rgba(255, 138, 101, 0.35);
+}
+
+.collection-stat__label {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.collection-stat__value {
+    font-size: clamp(1.4rem, 2vw, 1.7rem);
+    font-weight: 600;
+}
+
+.collection-stat__meta {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.collection-hero__preview {
+    display: flex;
+    align-items: center;
+}
+
+.collection-preview-card {
+    position: relative;
+    width: 100%;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid rgba(120, 144, 255, 0.18);
+    background: rgba(11, 15, 25, 0.6);
+    box-shadow: var(--shadow-md);
+}
+
+.collection-preview-card__media {
+    position: relative;
+    padding-top: 140%;
+    background-position: center;
+    background-size: cover;
+    filter: saturate(110%);
+}
+
+.collection-preview-card__overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.85rem;
+    padding: clamp(1.4rem, 3vw, 2rem);
+    background: linear-gradient(180deg, rgba(8, 12, 23, 0.1) 0%, rgba(8, 12, 23, 0.92) 75%);
+}
+
+.collection-preview-card__label {
+    align-self: flex-start;
+    background: rgba(5, 7, 15, 0.6);
+}
+
+.collection-preview-card__title {
+    margin: 0;
+    font-size: clamp(1.6rem, 3vw, 2.1rem);
+}
+
+.collection-preview-card__rating {
+    font-size: 1rem;
+    color: #ffd166;
+    font-weight: 600;
+}
+
+.collection-preview-card__text {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.collection-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.2rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.collection-toolbar__filters,
+.collection-toolbar__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.collection-toolbar__meta {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.collection-toolbar__sort {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.collection-toolbar__sort-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.collection-toolbar__sort-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.collection-all__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.collection-all__head h2 {
+    margin: 0;
+    font-size: clamp(1.4rem, 2vw, 1.8rem);
+}
+
+.collection-all__head .section-subtitle {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.collection-all__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: clamp(1rem, 2vw, 1.5rem);
+}
+
+.detail-all-card {
+    position: relative;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(120, 144, 255, 0.18);
+    overflow: hidden;
+    background: rgba(8, 12, 23, 0.65);
+    cursor: pointer;
+    transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+}
+
+.detail-all-card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.detail-all-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
+    border-color: rgba(88, 166, 255, 0.45);
+}
+
+.detail-all-card.is-active {
+    border-color: rgba(255, 138, 101, 0.5);
+    box-shadow: 0 20px 45px rgba(255, 138, 101, 0.18);
+}
+
+.detail-all-card__media {
+    position: relative;
+    overflow: hidden;
+    border-radius: inherit;
+}
+
+.detail-all-card__image {
+    width: 100%;
+    padding-top: 150%;
+    background: rgba(11, 15, 25, 0.8);
+    background-position: center;
+    background-size: cover;
+    transition: transform var(--transition);
+}
+
+.detail-all-card:hover .detail-all-card__image {
+    transform: scale(1.04);
+}
+
+.detail-all-card__overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1.1rem;
+    background: linear-gradient(180deg, rgba(5, 7, 15, 0.05) 20%, rgba(5, 7, 15, 0.78) 85%);
+}
+
+.detail-all-card__meta {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.detail-all-card__year {
+    background: rgba(5, 7, 15, 0.45);
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+}
+
+.detail-all-card__rating {
+    background: rgba(255, 209, 102, 0.15);
+    color: #ffd166;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+.detail-all-card__title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text-primary);
+}
+
+.detail-all-card__title,
+.detail-all-card__meta {
+    max-width: 24ch;
+}
+
