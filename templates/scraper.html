@@ -2,31 +2,7 @@
 {% block title %}{{ page_title or 'Medusa – Scraper' }}{% endblock %}
 
 {% block main %}
-<section class="surface page-header">
-    <div>
-        <h1>Scraper</h1>
-        <p class="section-subtitle">Verwalte Links, die über die Scraper gesammelt wurden.</p>
-    </div>
-</section>
-
-<section class="surface scraper-status" id="scraperGlobalPanel">
-    <div class="scraper-status__header">
-        <div>
-            <h2>Alle Scraper</h2>
-            <p class="scraper-status__message">Starte alle verfügbaren Scraper gleichzeitig.</p>
-        </div>
-        <div class="scraper-status__actions">
-            <button type="button" class="chip" id="scraperStartAll">
-                <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
-                <span>Alle Scraper starten</span>
-            </button>
-        </div>
-    </div>
-</section>
-
-{% for provider in scraper_providers %}
-    {% set status = scraper_statuses.get(provider.name, {}) %}
-    {% set settings = scraper_settings.get(provider.name, {}) %}
+{% macro render_scraper_panel(provider, status, settings, panel_id, heading, mode, helper_text=None, start_page=None) %}
     {% set progress_value = status.get('progress', 0.0) %}
     {% set status_next = status.get('next_page') or settings.get('next_page') %}
     {% set status_last = status.get('last_page') or (settings.get('last_page') if settings.get('last_page') else None) %}
@@ -61,14 +37,22 @@
         class="surface scraper-status"
         data-scraper-panel
         data-provider="{{ provider.name }}"
+        data-scraper-id="{{ panel_id }}"
+        data-scraper-mode="{{ mode }}"
         data-initial-status='{{ status|tojson }}'
+        {% if start_page is not none -%}
+        data-start-page="{{ start_page }}"
+        {%- endif %}
     >
         <div class="scraper-status__header">
             <div>
-                <h2>{{ provider.label }} Scraper</h2>
+                <h2>{{ heading }}</h2>
                 <p class="scraper-status__message" data-role="scraper-message" aria-live="polite">
                     {{ initial_message }}
                 </p>
+                {% if helper_text %}
+                <p class="scraper-status__description">{{ helper_text }}</p>
+                {% endif %}
             </div>
             <div class="scraper-status__actions">
                 <span class="scraper-status__state" data-role="scraper-state">{{ initial_state }}</span>
@@ -148,7 +132,50 @@
             </ul>
         </div>
     </section>
+{% endmacro %}
+
+<section class="surface page-header">
+    <div>
+        <h1>Scraper</h1>
+        <p class="section-subtitle">Verwalte Links, die über die Scraper gesammelt wurden.</p>
+    </div>
+</section>
+
+<section class="surface scraper-status" id="scraperGlobalPanel">
+    <div class="scraper-status__header">
+        <div>
+            <h2>Alle Scraper</h2>
+            <p class="scraper-status__message">Starte alle verfügbaren Scraper gleichzeitig.</p>
+        </div>
+        <div class="scraper-status__actions">
+            <button type="button" class="chip" id="scraperStartAll">
+                <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                <span>Alle Scraper starten</span>
+            </button>
+        </div>
+    </div>
+</section>
+
+{% for provider in movie_scraper_providers %}
+    {% set status = scraper_statuses.get(provider.name, {}) %}
+    {% set settings = scraper_settings.get(provider.name, {}) %}
+    {{ render_scraper_panel(provider, status, settings, provider.name, provider.label ~ ' Scraper', 'movies') }}
 {% endfor %}
+
+{% if series_scraper_providers %}
+<section class="surface page-header">
+    <div>
+        <h2>Serien-Scraper</h2>
+        <p class="section-subtitle">Starte zusätzliche Läufe für Anbieter mit Serienunterstützung.</p>
+    </div>
+</section>
+    {% for provider in series_scraper_providers %}
+        {% set status = scraper_statuses.get(provider.name, {}) %}
+        {% set settings = scraper_settings.get(provider.name, {}) %}
+        {% set helper = 'Beginnt automatisch bei Seite 1, wenn verfügbar, und lädt Filme & Serien.' %}
+        {{ render_scraper_panel(provider, status, settings, provider.name ~ '-series', provider.label ~ ' Serien-Scraper', 'series', helper, 1) }}
+    {% endfor %}
+{% endif %}
 
 <section class="surface">
     <div class="scraper-grid">

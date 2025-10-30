@@ -1417,6 +1417,12 @@ body.showing-search {
     color: var(--text-secondary);
 }
 
+.scraper-status__description {
+    margin-top: 0.35rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
 .scraper-status__actions {
     display: flex;
     align-items: center;

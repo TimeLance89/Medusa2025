@@ -16,6 +16,7 @@ class FilmpalastScraper(BaseScraper):
 
     name = "filmpalast"
     label = "Filmpalast"
+    content_categories = ("movies", "series")
 
     MOVIE_BASE_URL = "https://filmpalast.to/movies/new/page/{page}"
     SERIES_BASE_URL = "https://filmpalast.to/serien/view/page/{page}"
