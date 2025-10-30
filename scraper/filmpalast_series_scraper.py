@@ -19,7 +19,7 @@ import logging
 import sys
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Dict, Iterable
+from typing import Callable, Dict, Iterable, Optional, Tuple
 
 from app import (
     app,
@@ -120,7 +120,12 @@ def get_start_page(args: argparse.Namespace) -> int:
     return max(stored_page, DEFAULT_START_PAGE)
 
 
-def persist_results(results: Iterable[ScraperResult]) -> ProcessingStats:
+LogCallback = Callable[[ScraperResult, str, Optional[str]], None]
+
+
+def persist_results(
+    results: Iterable[ScraperResult], callback: LogCallback | None = None
+) -> ProcessingStats:
     """Persist scraped results inside the application's database."""
 
     stats = ProcessingStats()
@@ -128,6 +133,8 @@ def persist_results(results: Iterable[ScraperResult]) -> ProcessingStats:
         try:
             status, identifier = attach_series_streaming_entry(entry)
             stats.register(status)
+            if callback is not None:
+                callback(entry, status, identifier)
             if identifier:
                 LOGGER.info("%s – %s", status.capitalize(), identifier)
             else:
@@ -138,33 +145,49 @@ def persist_results(results: Iterable[ScraperResult]) -> ProcessingStats:
     return stats
 
 
-def main(argv: Iterable[str] | None = None) -> int:
-    argv = list(argv or sys.argv[1:])
-    args = parse_args(argv)
-    setup_logging(args.log_level)
+def run_scraper(
+    page: Optional[int] = None,
+    *,
+    reset: bool = False,
+    callback: LogCallback | None = None,
+) -> Tuple[int, Optional[ProcessingStats]]:
+    """Execute the scraper logic for optional integration into the app."""
 
+    args = argparse.Namespace(page=page, reset=reset)
     scraper = FilmpalastSeriesScraper()
 
     with app.app_context():
-        try:
-            start_page = get_start_page(args)
-        except ValueError as exc:
-            LOGGER.error("%s", exc)
-            return 1
-
+        start_page = get_start_page(args)
         LOGGER.info("Scraping filmpalast.to series page %s", start_page)
         results = scraper.scrape_page(start_page)
         if not results:
             LOGGER.warning("No results found on page %s", start_page)
-            return 0
+            return start_page, None
 
-        stats = persist_results(results)
+        stats = persist_results(results, callback=callback)
         LOGGER.info("Finished processing page %s", start_page)
         LOGGER.info("Summary: %s", stats.as_dict())
 
         next_page = start_page + 1
         LOGGER.info("Updating stored page to %s", next_page)
         set_scraper_setting(PROVIDER_NAME, SETTING_SUFFIX_PAGE, next_page)
+
+        return start_page, stats
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    argv = list(argv or sys.argv[1:])
+    args = parse_args(argv)
+    setup_logging(args.log_level)
+
+    try:
+        start_page, stats = run_scraper(page=args.page, reset=args.reset)
+    except ValueError as exc:
+        LOGGER.error("%s", exc)
+        return 1
+
+    if stats is None:
+        return 0
 
     return 0
 
