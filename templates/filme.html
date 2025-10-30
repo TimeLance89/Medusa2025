@@ -2,62 +2,128 @@
 {% block title %}{{ page_title or 'Medusa – Filme' }}{% endblock %}
 
 {% block main %}
-<section class="surface page-header">
-    <div>
-        <h1>Filme</h1>
-        <p class="section-subtitle">Alle Filme deiner Bibliothek in einem modernen Grid – inspiriert von den besten Streaming-UIs.</p>
+{% set subtitles = {
+    'Top bewertet': 'Filme mit den höchsten Bewertungen deiner Sammlung',
+    'Neu hinzugefügt': 'Frisch importierte Titel aus den letzten Synchronisationen',
+    'Mit Streaming Links': 'Direkt startklar dank hinterlegter Streaming-Links'
+} %}
+
+<section class="surface film-hero">
+    <div class="film-hero__intro">
+        <div class="film-hero__headline">
+            <p class="film-hero__eyebrow">Deine Sammlung im Blick</p>
+            <h1>Filme</h1>
+        </div>
+        <p class="film-hero__copy">
+            Entdecke kuratierte Bereiche deiner Bibliothek – übersichtlich in kompakte Sammlungen gegliedert und mit allen wichtigen Details auf einen Blick.
+        </p>
+        <div class="film-hero__actions">
+            <a href="{{ url_for('filme_all') }}" class="chip chip--primary" data-navigation="route">
+                <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
+                <span>Alle Filme</span>
+            </a>
+            <a href="#film-sections" class="chip chip--ghost">
+                <span class="material-symbols-outlined" aria-hidden="true">arrow_downward</span>
+                <span>Zu den Bereichen</span>
+            </a>
+        </div>
     </div>
-    <div class="page-header__actions">
-        <a href="{{ url_for('filme_all') }}" class="chip" data-navigation="route">
-            <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
-            <span>Alle Filme</span>
-        </a>
+    <div class="film-hero__metrics">
+        <div class="film-metric">
+            <span class="film-metric__label">Gesamtbestand</span>
+            <span class="film-metric__value">{{ movie_library_stats.total_movies if movie_library_stats else 0 }}</span>
+            <span class="film-metric__hint">Filme verfügbar</span>
+        </div>
+        {% if movie_library_stats and movie_library_stats.top_rated_title %}
+        <div class="film-metric">
+            <span class="film-metric__label">Top bewertet</span>
+            <span class="film-metric__value">{{ movie_library_stats.top_rating or '–' }}</span>
+            <span class="film-metric__hint">{{ movie_library_stats.top_rated_title }}</span>
+        </div>
+        {% endif %}
+        {% if movie_library_stats and movie_library_stats.latest_title %}
+        <div class="film-metric">
+            <span class="film-metric__label">Zuletzt hinzugefügt</span>
+            <span class="film-metric__value">{{ movie_library_stats.latest_added or '–' }}</span>
+            <span class="film-metric__hint">{{ movie_library_stats.latest_title }}</span>
+        </div>
+        {% endif %}
     </div>
 </section>
 
 {% if film_sections %}
-    {% for section in film_sections %}
-    {% if section['items'] %}
-    <section class="surface media-rail" data-rail>
-        <header class="section-head">
-            <div>
-                <h2>{{ section.title }}</h2>
-                <p class="section-subtitle">Handverlesene Sets deiner Sammlung</p>
-            </div>
-            <div class="rail-controls">
-                <button type="button" class="rail-button" data-rail-prev aria-label="Zurück"><span class="material-symbols-outlined">chevron_left</span></button>
-                <button type="button" class="rail-button" data-rail-next aria-label="Weiter"><span class="material-symbols-outlined">chevron_right</span></button>
-            </div>
-        </header>
-        <div class="media-rail__track" data-rail-track>
-            {% for movie in section['items'] %}
-            {% set poster_url = movie.poster_path and 'https://image.tmdb.org/t/p/w500' + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
-            {% set backdrop_url = movie.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + movie.backdrop_path or '' %}
-            <article class="media-card" role="button" tabindex="0"
-                     data-movie-id="{{ movie.id }}"
-                     data-title="{{ movie.title }}"
-                     data-overview="{{ movie.overview|default('', true)|e }}"
-                     data-backdrop="{{ backdrop_url }}"
-                     data-poster="{{ poster_url }}"
-                     data-release="{{ movie.release_date or '' }}">
-                <div class="media-card__poster" style="background-image: url('{{ poster_url }}');"></div>
-                <div class="media-card__overlay">
-                    <h3 class="media-card__title">{{ movie.title }}</h3>
-                    <p class="media-card__meta">{{ movie.release_date or 'Unbekannt' }}</p>
-                    <span class="media-card__rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
-                </div>
-            </article>
+    <section class="surface film-nav" id="film-sections">
+        <div class="film-nav__label">Sammlungen</div>
+        <div class="film-nav__chips">
+            {% for section in film_sections if section['items'] %}
+            <a href="#section-{{ loop.index }}" class="chip chip--ghost">
+                <span>{{ section.title }}</span>
+                <span class="film-nav__count">{{ section['items']|length }}</span>
+            </a>
             {% endfor %}
         </div>
     </section>
-    {% else %}
-    <section class="surface">
-        <p class="empty">In diesem Bereich wurden noch keine Filme gefunden.</p>
-    </section>
-    {% endif %}
+
+    {% for section in film_sections %}
+        {% if section['items'] %}
+        {% set subtitle = subtitles.get(section.title) or 'Eine kuratierte Auswahl aus deiner Sammlung' %}
+        <section class="surface film-section" id="section-{{ loop.index }}">
+            <header class="film-section__header">
+                <div>
+                    <h2>{{ section.title }}</h2>
+                    <p class="section-subtitle">{{ subtitle }}</p>
+                </div>
+                <div class="film-section__meta">
+                    <span class="film-section__count">{{ section['items']|length }} Titel</span>
+                    <a href="{{ url_for('filme_all') }}" class="film-section__link" data-navigation="route">
+                        <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+                        <span>Alle Filme öffnen</span>
+                    </a>
+                </div>
+            </header>
+            <div class="media-grid film-grid">
+                {% for movie in section['items'] %}
+                {% set poster_url = movie.poster_path and 'https://image.tmdb.org/t/p/w500' + movie.poster_path or url_for('static', filename='images/poster-placeholder.svg') %}
+                {% set backdrop_url = movie.backdrop_path and 'https://image.tmdb.org/t/p/w1280' + movie.backdrop_path or '' %}
+                {% set release_year = movie.release_date and movie.release_date[:4] or 'Unbekannt' %}
+                <article class="media-card media-card--grid media-card--film" role="button" tabindex="0"
+                         data-movie-id="{{ movie.id }}"
+                         data-title="{{ movie.title }}"
+                         data-overview="{{ movie.overview|default('', true)|e }}"
+                         data-backdrop="{{ backdrop_url }}"
+                         data-poster="{{ poster_url }}"
+                         data-release="{{ movie.release_date or '' }}">
+                    <div class="media-card__poster" style="background-image: url('{{ poster_url }}');"></div>
+                    <div class="media-card__overlay">
+                        <div class="media-card__header">
+                            <h3 class="media-card__title">{{ movie.title }}</h3>
+                            <p class="media-card__meta">{{ release_year }}</p>
+                        </div>
+                        <div class="media-card__footer">
+                            <span class="media-card__rating">⭐ {{ (movie.rating or 0)|round(1) }}</span>
+                            {% if movie.runtime %}
+                            <span class="media-card__badge">{{ movie.runtime }} Min.</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% else %}
+        <section class="surface film-section" id="section-{{ loop.index }}">
+            <header class="film-section__header">
+                <div>
+                    <h2>{{ section.title }}</h2>
+                    <p class="section-subtitle">Der Bereich ist derzeit leer.</p>
+                </div>
+            </header>
+            <p class="empty">In diesem Bereich wurden noch keine Filme gefunden.</p>
+        </section>
+        {% endif %}
     {% endfor %}
 {% else %}
-<section class="surface">
+<section class="surface film-section">
     <p class="empty large">Noch keine Filme vorhanden. Synchronisiere zuerst Inhalte.</p>
 </section>
 {% endif %}

@@ -1916,6 +1916,18 @@ def build_library_context() -> dict:
 
     hero_movies = popular_movies[:5]
 
+    total_movies = db.session.query(func.count(Movie.id)).filter(valid_filter).scalar() or 0
+    latest_movie = recent_movies[0] if recent_movies else None
+    top_rated_movie = next((movie for movie in popular_movies if movie.rating), popular_movies[0] if popular_movies else None)
+
+    movie_library_stats = {
+        "total_movies": int(total_movies),
+        "latest_title": latest_movie.title if latest_movie else None,
+        "latest_added": latest_movie.created_at.strftime("%d.%m.%Y") if latest_movie and latest_movie.created_at else None,
+        "top_rated_title": top_rated_movie.title if top_rated_movie else None,
+        "top_rating": round(float(top_rated_movie.rating), 1) if top_rated_movie and top_rated_movie.rating is not None else None,
+    }
+
     now_playing_movies: List[Movie] = []
     try:
         now_playing_payload = fetch_tmdb_movies("now_playing")
@@ -1942,6 +1954,7 @@ def build_library_context() -> dict:
         "scraped": scraped,
         "hero_movies": hero_movies,
         "now_playing_movies": now_playing_movies,
+        "movie_library_stats": movie_library_stats,
     }
 
 
