@@ -42,7 +42,6 @@
                 style="{% if highlight_image %}background-image: url('{{ highlight_image }}');{% endif %}"
             ></div>
             <div class="collection-preview-card__overlay">
-                <span class="collection-preview-card__label">Top bewertet</span>
                 <h2 class="collection-preview-card__title">{{ highlight_movie.title }}</h2>
                 {% if highlight_movie.rating is not none %}
                 <span class="collection-preview-card__rating">⭐ {{ highlight_movie.rating|round(1) }}</span>
