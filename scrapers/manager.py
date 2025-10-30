@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Dict, Iterable, Optional, Sequence
 
 from .base import BaseScraper, ProgressCallback, ScraperResult
-from .providers.filmpalast import FilmpalastScraper
+from .providers.filmpalast import FilmpalastScraper, FilmpalastSeriesScraper
 from .providers.kinox import KinoxScraper
 
 
@@ -15,6 +15,7 @@ class ScraperManager:
         self._scrapers: Dict[str, BaseScraper] = {}
         self.register_scraper(KinoxScraper())
         self.register_scraper(FilmpalastScraper())
+        self.register_scraper(FilmpalastSeriesScraper())
 
     def register_scraper(self, scraper: BaseScraper) -> None:
         self._scrapers[scraper.name] = scraper
