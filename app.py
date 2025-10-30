@@ -12,7 +12,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case, func, or_
 from sqlalchemy.engine import make_url
 
-from scrapers import ScraperResult, get_scraper_manager
+from scrapers import BaseScraper, ScraperResult, get_scraper_manager
 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
