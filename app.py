@@ -2039,11 +2039,6 @@ def scraper_view():
         for provider in providers
         if "movies" in _get_scraper_categories(provider)
     ]
-    context["series_scraper_providers"] = [
-        provider
-        for provider in providers
-        if "series" in _get_scraper_categories(provider)
-    ]
     context["scraper_statuses"] = get_scraper_status()
     context["scraper_settings"] = {
         provider.name: {

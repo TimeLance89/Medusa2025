@@ -2,51 +2,75 @@
 {% block title %}{{ page_title or 'Medusa – Einstellungen' }}{% endblock %}
 
 {% block main %}
-<section class="surface page-header">
-    <div>
+{% set provider_count = scraper_providers|length %}
+
+<section class="surface page-header page-header--split">
+    <div class="page-header__content">
         <h1>Einstellungen</h1>
-        <p class="section-subtitle">Verwalte Schlüssel und Scraper-Einstellungen.</p>
+        <p class="section-subtitle">Konfiguriere Schnittstellen und Scraper-Verhalten an einem zentralen Ort.</p>
+    </div>
+    <div class="page-header__actions">
+        <div class="page-header__stat-block">
+            <span class="page-header__stat-label">Verfügbare Scraper</span>
+            <span class="page-header__stat-value">{{ provider_count }}</span>
+        </div>
     </div>
 </section>
 
-<section class="surface">
-    <form id="settingsForm" class="settings-form">
-        <div class="form-grid">
-            <label class="form-field">
-                <span class="form-label">TMDB API Key</span>
-                <input type="text" name="tmdb_api_key" placeholder="z.B. 123abc" required />
-                <span class="form-hint">Wird für die Synchronisation von TMDB benötigt.</span>
-            </label>
-            {% for provider in scraper_providers %}
-            {% set settings = scraper_settings.get(provider.name, {}) %}
-            <label class="form-field">
-                <span class="form-label">{{ provider.label }} nächste Seite</span>
-                <input
-                    type="number"
-                    min="1"
-                    name="scrapers[{{ provider.name }}][next_page]"
-                    value="{{ settings.next_page }}"
-                    data-scraper-next
-                    data-provider="{{ provider.name }}"
-                />
-                <span class="form-hint">
-                    Der Scraper setzt automatisch fort. Letzte abgeschlossene Seite:
-                    <strong class="scraper-last-page" data-provider="{{ provider.name }}">{{ settings.last_page or '–' }}</strong>.
-                </span>
-            </label>
-            {% endfor %}
+<section class="settings-layout">
+    <form id="settingsForm" class="surface settings-panel">
+        <div class="settings-panel__section">
+            <div class="settings-panel__header">
+                <h2>API &amp; Schlüssel</h2>
+                <p>Hinterlege globale Zugangsdaten, die für alle Scraper benötigt werden.</p>
+            </div>
+            <div class="settings-panel__fields">
+                <label class="form-field">
+                    <span class="form-label">TMDB API Key</span>
+                    <input type="text" name="tmdb_api_key" placeholder="z.B. 123abc" required />
+                    <span class="form-hint">Wird für die Synchronisation von TMDB benötigt.</span>
+                </label>
+            </div>
         </div>
-        <div class="form-actions">
+
+        <div class="settings-panel__section">
+            <div class="settings-panel__header">
+                <h2>Scraper-Läufe</h2>
+                <p>Bestimme für jeden Anbieter, ab welcher Seite neue Inhalte gesammelt werden.</p>
+            </div>
+            <div class="settings-panel__fields settings-panel__fields--grid">
+                {% for provider in scraper_providers %}
+                {% set settings = scraper_settings.get(provider.name, {}) %}
+                <label class="form-field">
+                    <span class="form-label">{{ provider.label }}</span>
+                    <input
+                        type="number"
+                        min="1"
+                        name="scrapers[{{ provider.name }}][next_page]"
+                        value="{{ settings.next_page }}"
+                        data-scraper-next
+                        data-provider="{{ provider.name }}"
+                    />
+                    <span class="form-hint">
+                        Startet bei Seite
+                        <strong class="scraper-last-page" data-provider="{{ provider.name }}">{{ settings.last_page or '–' }}</strong>.
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="settings-panel__actions">
             <button type="submit" class="btn btn-primary">Einstellungen speichern</button>
         </div>
     </form>
-</section>
 
-<section class="surface settings-reset">
-    <div>
-        <h2>Scraper zurücksetzen</h2>
-        <p class="section-subtitle">Lösche alle gescrapten Inhalte und beginne erneut.</p>
-    </div>
-    <button type="button" id="resetScraped" class="btn btn-secondary">Gescrapte Inhalte löschen</button>
+    <aside class="settings-side">
+        <div class="surface settings-side__card">
+            <h2>Scraper zurücksetzen</h2>
+            <p class="section-subtitle">Leere die aktuelle Sammlung an gescrapten Links.</p>
+            <button type="button" id="resetScraped" class="btn btn-secondary">Gescrapte Inhalte löschen</button>
+        </div>
+    </aside>
 </section>
 {% endblock %}

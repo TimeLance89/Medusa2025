@@ -2,7 +2,7 @@
 {% block title %}{{ page_title or 'Medusa – Scraper' }}{% endblock %}
 
 {% block main %}
-{% macro render_scraper_panel(provider, status, settings, panel_id, heading, mode, helper_text=None, start_page=None) %}
+{% macro render_scraper_panel(provider, status, settings, panel_id, heading, mode, start_page=None) %}
     {% set progress_value = status.get('progress', 0.0) %}
     {% set status_next = status.get('next_page') or settings.get('next_page') %}
     {% set status_last = status.get('last_page') or (settings.get('last_page') if settings.get('last_page') else None) %}
@@ -34,7 +34,7 @@
     {% endif %}
 
     <section
-        class="surface scraper-status"
+        class="surface scraper-status scraper-card"
         data-scraper-panel
         data-provider="{{ provider.name }}"
         data-scraper-id="{{ panel_id }}"
@@ -44,17 +44,12 @@
         data-start-page="{{ start_page }}"
         {%- endif %}
     >
-        <div class="scraper-status__header">
+        <header class="scraper-card__header">
             <div>
-                <h2>{{ heading }}</h2>
-                <p class="scraper-status__message" data-role="scraper-message" aria-live="polite">
-                    {{ initial_message }}
-                </p>
-                {% if helper_text %}
-                <p class="scraper-status__description">{{ helper_text }}</p>
-                {% endif %}
+                <p class="scraper-card__eyebrow">{{ heading }}</p>
+                <h3>{{ provider.label }}</h3>
             </div>
-            <div class="scraper-status__actions">
+            <div class="scraper-card__actions">
                 <span class="scraper-status__state" data-role="scraper-state">{{ initial_state }}</span>
                 <button
                     type="button"
@@ -66,26 +61,31 @@
                     <span>Scraper starten</span>
                 </button>
             </div>
-        </div>
+        </header>
 
-        <div class="scraper-status__body">
-            <div class="scraper-status__progress">
-                <div class="scraper-status__progress-bar">
-                    <div
-                        class="scraper-status__progress-value"
-                        data-role="scraper-progress-bar"
-                        style="width: {{ '%.1f'|format(progress_value) }}%;"
-                    ></div>
-                </div>
-                <div class="scraper-status__progress-meta">
-                    <span data-role="scraper-progress-label">{{ '%.1f'|format(progress_value) }}%</span>
-                    <span data-role="scraper-updated">
-                        {% if status.get('last_update') %}
-                            Aktualisiert: {{ status.get('last_update') }}
-                        {% else %}
-                            Noch keine Aktivität
-                        {% endif %}
-                    </span>
+        <div class="scraper-card__body">
+            <div class="scraper-card__status">
+                <p class="scraper-status__message" data-role="scraper-message" aria-live="polite">
+                    {{ initial_message }}
+                </p>
+                <div class="scraper-status__progress">
+                    <div class="scraper-status__progress-bar">
+                        <div
+                            class="scraper-status__progress-value"
+                            data-role="scraper-progress-bar"
+                            style="width: {{ '%.1f'|format(progress_value) }}%;"
+                        ></div>
+                    </div>
+                    <div class="scraper-status__progress-meta">
+                        <span data-role="scraper-progress-label">{{ '%.1f'|format(progress_value) }}%</span>
+                        <span data-role="scraper-updated">
+                            {% if status.get('last_update') %}
+                                Aktualisiert: {{ status.get('last_update') }}
+                            {% else %}
+                                Noch keine Aktivität
+                            {% endif %}
+                        </span>
+                    </div>
                 </div>
             </div>
 
@@ -105,96 +105,136 @@
             </dl>
         </div>
 
-        <div class="scraper-status__log">
-            <div class="scraper-status__log-header">
-                <h3>Aktivitätsprotokoll</h3>
-                <button
-                    type="button"
-                    class="chip chip--subtle"
-                    data-action="refresh-scraper"
-                    data-provider="{{ provider.name }}"
-                >
-                    <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
-                    <span>Aktualisieren</span>
-                </button>
-            </div>
-            <ul class="scraper-status__log-list" data-role="scraper-log">
-                {% if status.get('log') %}
-                    {% for entry in status.get('log')|reverse %}
-                        <li class="scraper-status__log-item" data-level="{{ entry.level }}">
-                            <span class="scraper-status__log-time">{{ entry.timestamp }}</span>
-                            <span class="scraper-status__log-text">{{ entry.message }}</span>
-                        </li>
-                    {% endfor %}
-                {% else %}
-                    <li class="scraper-status__log-item is-empty">Noch keine Aktivitäten.</li>
-                {% endif %}
-            </ul>
-        </div>
+        <footer class="scraper-card__footer">
+            <details class="scraper-log">
+                <summary>
+                    <span class="material-symbols-outlined" aria-hidden="true">list</span>
+                    <span>Aktivitätsprotokoll</span>
+                </summary>
+                <div class="scraper-log__body">
+                    <button
+                        type="button"
+                        class="chip chip--subtle"
+                        data-action="refresh-scraper"
+                        data-provider="{{ provider.name }}"
+                    >
+                        <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                        <span>Aktualisieren</span>
+                    </button>
+                    <ul class="scraper-status__log-list" data-role="scraper-log">
+                        {% if status.get('log') %}
+                            {% for entry in status.get('log')|reverse %}
+                                <li class="scraper-status__log-item" data-level="{{ entry.level }}">
+                                    <span class="scraper-status__log-time">{{ entry.timestamp }}</span>
+                                    <span class="scraper-status__log-text">{{ entry.message }}</span>
+                                </li>
+                            {% endfor %}
+                        {% else %}
+                            <li class="scraper-status__log-item is-empty">Noch keine Aktivitäten.</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </details>
+        </footer>
     </section>
 {% endmacro %}
 
-<section class="surface page-header">
-    <div>
-        <h1>Scraper</h1>
-        <p class="section-subtitle">Verwalte Links, die über die Scraper gesammelt wurden.</p>
-    </div>
-</section>
-
-<section class="surface scraper-status" id="scraperGlobalPanel">
-    <div class="scraper-status__header">
-        <div>
-            <h2>Alle Scraper</h2>
-            <p class="scraper-status__message">Starte alle verfügbaren Scraper gleichzeitig.</p>
-        </div>
-        <div class="scraper-status__actions">
-            <button type="button" class="chip" id="scraperStartAll">
-                <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
-                <span>Alle Scraper starten</span>
-            </button>
-        </div>
-    </div>
-</section>
-
+{% set summary = namespace(running=0, completed=0) %}
 {% for provider in movie_scraper_providers %}
     {% set status = scraper_statuses.get(provider.name, {}) %}
-    {% set settings = scraper_settings.get(provider.name, {}) %}
-    {{ render_scraper_panel(provider, status, settings, provider.name, provider.label ~ ' Scraper', 'movies') }}
+    {% if status.get('running') %}
+        {% set summary.running = summary.running + 1 %}
+    {% elif status.get('processed_links') %}
+        {% set summary.completed = summary.completed + 1 %}
+    {% endif %}
 {% endfor %}
 
-{% if series_scraper_providers %}
-<section class="surface page-header">
-    <div>
-        <h2>Serien-Scraper</h2>
-        <p class="section-subtitle">Starte zusätzliche Läufe für Anbieter mit Serienunterstützung.</p>
+{% set total_links = scraped|length %}
+{% set total_providers = movie_scraper_providers|length %}
+
+<section class="surface page-header page-header--split">
+    <div class="page-header__content">
+        <h1>Scraper</h1>
+        <p class="section-subtitle">Kompakter Überblick über alle Scraper-Läufe und zuletzt importierte Links.</p>
+        <div class="page-header__stats">
+            <span><strong>{{ total_providers }}</strong> aktive Anbieter</span>
+            <span><strong>{{ total_links }}</strong> gespeicherte Links</span>
+        </div>
+    </div>
+    <div class="page-header__actions page-header__actions--stacked">
+        <button type="button" class="chip chip--primary" id="scraperStartAll">
+            <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+            <span>Alle Scraper starten</span>
+        </button>
+        <p class="page-header__hint">
+            {{ summary.running }} Läufe aktiv · {{ summary.completed }} zuletzt abgeschlossen
+        </p>
     </div>
 </section>
-    {% for provider in series_scraper_providers %}
-        {% set status = scraper_statuses.get(provider.name, {}) %}
-        {% set settings = scraper_settings.get(provider.name, {}) %}
-        {% set helper = 'Beginnt automatisch bei Seite 1, wenn verfügbar, und lädt Filme & Serien.' %}
-        {{ render_scraper_panel(provider, status, settings, provider.name ~ '-series', provider.label ~ ' Serien-Scraper', 'series', helper, 1) }}
-    {% endfor %}
-{% endif %}
 
-<section class="surface">
-    <div class="scraper-grid">
-        {% if scraped %}
-            {% for link in scraped %}
-            <div class="scraper-card" data-movie-id="{{ link.movie.id }}" role="button" tabindex="0">
-                <div class="scraper-card__info">
+<section class="scraper-layout">
+    <div class="surface scraper-summary" id="scraperGlobalPanel">
+        <header class="scraper-summary__header">
+            <div>
+                <h2>Überblick</h2>
+                <p class="scraper-summary__description">Starte alle verfügbaren Film-Scraper gesammelt oder behalte den Fortschritt einzelner Läufe im Blick.</p>
+            </div>
+        </header>
+        <dl class="scraper-summary__metrics">
+            <div>
+                <dt>Aktive Scraper</dt>
+                <dd>{{ summary.running }}</dd>
+            </div>
+            <div>
+                <dt>Abgeschlossene Läufe</dt>
+                <dd>{{ summary.completed }}</dd>
+            </div>
+            <div>
+                <dt>Gespeicherte Links</dt>
+                <dd>{{ total_links }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="scraper-panels">
+        {% if movie_scraper_providers %}
+            {% for provider in movie_scraper_providers %}
+                {% set status = scraper_statuses.get(provider.name, {}) %}
+                {% set settings = scraper_settings.get(provider.name, {}) %}
+                {{ render_scraper_panel(provider, status, settings, provider.name, 'Film-Scraper', 'movies') }}
+            {% endfor %}
+        {% else %}
+            <p class="empty large">Keine Scraper-Anbieter verfügbar.</p>
+        {% endif %}
+    </div>
+</section>
+
+<section class="surface scraper-results">
+    <header class="scraper-results__header">
+        <div>
+            <h2>Zuletzt gespeicherte Links</h2>
+            <p class="scraper-results__description">Direkter Zugriff auf die letzten Einträge aus den Scraper-Läufen.</p>
+        </div>
+    </header>
+
+    {% if scraped %}
+    <ul class="scraper-results__list">
+        {% for link in scraped %}
+            <li class="scraper-result" data-movie-id="{{ link.movie.id }}" role="button" tabindex="0">
+                <div class="scraper-result__meta">
+                    <span class="scraper-result__source">{{ link.source_name }}</span>
                     <h4>{{ link.movie.title }}</h4>
-                    <p>{{ link.source_name }} · {{ link.mirror_info or 'Mirror' }}</p>
+                    <p>{{ link.mirror_info or 'Mirror' }}</p>
                 </div>
                 <button type="button" class="chip view-detail" data-movie-id="{{ link.movie.id }}">
                     <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
                     <span>Details</span>
                 </button>
-            </div>
-            {% endfor %}
-        {% else %}
-            <p class="empty large">Noch keine gescrapten Links vorhanden.</p>
-        {% endif %}
-    </div>
+            </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+        <p class="empty large">Noch keine gescrapten Links vorhanden.</p>
+    {% endif %}
 </section>
 {% endblock %}

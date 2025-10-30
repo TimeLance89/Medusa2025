@@ -1423,7 +1423,9 @@ async function startScraper(controllerId) {
   const buttonsToDisable = [topbarScrapeButton, scraperStartAllButton, ...providerButtons].filter(Boolean);
   setButtonsDisabled(buttonsToDisable, true);
   try {
-    const label = controller?.panel?.querySelector('h2')?.textContent || 'Scraper';
+    const heading =
+      controller?.panel?.querySelector('h3') || controller?.panel?.querySelector('h2');
+    const label = heading?.textContent?.trim() || 'Scraper';
     showToast(`${label} wird gestartet...`);
     const payload = {};
     if (controller.mode === 'series') {
@@ -2148,7 +2150,7 @@ async function saveSettings(event) {
 
 function bindContentCards() {
   const triggers = document.querySelectorAll(
-    '.media-card[data-movie-id], .card[data-movie-id], .view-detail[data-movie-id], .scraper-card[data-movie-id], .detail-all-card[data-movie-id], .media-card[data-series-id], .card[data-series-id], .view-detail[data-series-id], .scraper-card[data-series-id]'
+    '.media-card[data-movie-id], .card[data-movie-id], .view-detail[data-movie-id], .scraper-card[data-movie-id], .scraper-result[data-movie-id], .detail-all-card[data-movie-id], .media-card[data-series-id], .card[data-series-id], .view-detail[data-series-id], .scraper-card[data-series-id], .scraper-result[data-series-id]'
   );
 
   triggers.forEach((element) => {
@@ -2181,6 +2183,7 @@ function bindContentCards() {
       element.classList.contains('media-card') ||
       element.classList.contains('card') ||
       element.classList.contains('scraper-card') ||
+      element.classList.contains('scraper-result') ||
       element.classList.contains('detail-all-card')
     ) {
       element.addEventListener('keydown', (event) => {
