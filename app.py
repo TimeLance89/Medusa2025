@@ -11,6 +11,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case, func, or_
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import OperationalError
 
 from scrapers import BaseScraper, ScraperResult, get_scraper_manager
 
@@ -760,7 +761,14 @@ def ensure_database() -> None:
 def ensure_database_indexes() -> None:
     engine = db.engine
     for index in DATABASE_INDEXES:
-        index.create(bind=engine, checkfirst=True)
+        try:
+            index.create(bind=engine, checkfirst=True)
+        except OperationalError as exc:
+            message = str(exc).lower()
+            if "already exists" in message:
+                app.logger.debug("Skipping creation of existing index %s", index.name)
+                continue
+            raise
 
 
 def fetch_tmdb_movies(category: str = "popular", page: int = 1) -> List[dict]:
