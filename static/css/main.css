@@ -2867,10 +2867,18 @@ body.showing-detail {
 
 .collection-preview-card__media {
     position: relative;
-    padding-top: 140%;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    max-height: clamp(220px, 28vw, 320px);
     background-position: center;
     background-size: cover;
     filter: saturate(110%);
+}
+
+@supports not (aspect-ratio: 1) {
+    .collection-preview-card__media {
+        padding-top: 56.25%;
+    }
 }
 
 .collection-preview-card__overlay {
