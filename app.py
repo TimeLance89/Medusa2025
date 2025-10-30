@@ -1124,21 +1124,24 @@ def attach_series_streaming_entry(entry: ScraperResult) -> Tuple[str, Optional[s
             ).first()
         )
         episode = None
-        if season is None or not any(
-            ep.episode_number == episode_number for ep in (season.episodes if season else [])
-        ):
+        season_has_episode = False
+        if season is not None:
+            season_has_episode = any(
+                ep.episode_number == episode_number for ep in season.episodes
+            )
+        if season is None or not season_has_episode:
             sync_series_with_tmdb(series)
             season = (
                 SeriesSeason.query.filter_by(
                     series_id=series.id, season_number=season_number
                 ).first()
             )
-            if season:
-                episode = (
-                    SeriesEpisode.query.filter_by(
-                        season_id=season.id, episode_number=episode_number
-                    ).first()
-                )
+        if season is not None:
+            episode = (
+                SeriesEpisode.query.filter_by(
+                    season_id=season.id, episode_number=episode_number
+                ).first()
+            )
     else:
         season = (
             SeriesSeason.query.filter_by(
