@@ -17,33 +17,49 @@
                         />
                     </figure>
                     <div class="player-hero__info">
+                        <div class="player-hero__labels">
+                            <span class="player-pill">Film</span>
+                        </div>
                         <header class="player-hero__heading">
-                            <h2 id="detailTitle"></h2>
+                            <h1 id="detailTitle"></h1>
                             <p id="detailTagline" class="player-hero__tagline"></p>
                         </header>
                         <div class="player-hero__meta" id="detailMeta"></div>
                         <p id="detailOverview" class="player-hero__overview"></p>
-                        <div class="player-hero__actions">
-                            <button class="player-button player-button--primary" type="button" id="detailWatch" disabled>
-                                <span class="player-button__icon">▶</span>
-                                <span id="detailWatchLabel">Ansehen</span>
-                            </button>
-                            <button class="player-button" type="button" id="detailTrailerButton" disabled>
-                                <span class="player-button__icon">🎬</span>
-                                <span>Trailer</span>
-                            </button>
-                        </div>
                     </div>
+                    <aside class="player-hero__sidebar">
+                        <div class="player-hero__cta">
+                            <span class="player-hero__cta-label">Jetzt ansehen</span>
+                            <p class="player-hero__cta-text">
+                                Starte den Stream direkt im Browser oder öffne ihn in einem neuen Tab.
+                            </p>
+                            <div class="player-hero__actions">
+                                <button
+                                    class="player-button player-button--primary"
+                                    type="button"
+                                    id="detailWatch"
+                                    disabled
+                                >
+                                    <span class="player-button__icon">▶</span>
+                                    <span id="detailWatchLabel">Ansehen</span>
+                                </button>
+                                <button class="player-button" type="button" id="detailTrailerButton" disabled>
+                                    <span class="player-button__icon">🎬</span>
+                                    <span>Trailer</span>
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
                 </div>
             </div>
         </article>
         <div class="player-layout">
             <div class="player-layout__primary">
                 <section class="player-card player-card--streams" aria-labelledby="detailStreamsTitle">
-                    <header class="player-card__header">
+                    <header class="player-card__header player-card__header--row">
                         <div>
-                            <span class="player-card__eyebrow">Medienplayer</span>
-                            <h3 id="detailStreamsTitle">Verfügbare Quellen</h3>
+                            <span class="player-card__eyebrow">Streams</span>
+                            <h2 id="detailStreamsTitle">Verfügbare Quellen</h2>
                         </div>
                         <p class="player-card__subtitle">
                             Wähle einen Mirror oder öffne den Stream in einem neuen Tab.
@@ -55,7 +71,8 @@
                 </section>
                 <section class="player-card player-card--overview">
                     <header class="player-card__header">
-                        <h3>Handlung</h3>
+                        <span class="player-card__eyebrow">Handlung</span>
+                        <h2>Inhalt</h2>
                     </header>
                     <div class="player-card__body">
                         <p id="detailOverviewSecondary"></p>
@@ -65,7 +82,8 @@
             <aside class="player-layout__aside">
                 <section class="player-card player-card--facts">
                     <header class="player-card__header">
-                        <h3>Details</h3>
+                        <span class="player-card__eyebrow">Fakten</span>
+                        <h2>Details</h2>
                     </header>
                     <div class="player-card__body">
                         <ul id="detailFacts" class="player-facts"></ul>
@@ -76,7 +94,8 @@
         <section class="player-card player-card--cast">
             <header class="player-card__header player-card__header--row">
                 <div>
-                    <h3>Besetzung</h3>
+                    <span class="player-card__eyebrow">Besetzung</span>
+                    <h2>Mitwirkende</h2>
                     <p class="player-card__subtitle">Die wichtigsten Schauspieler:innen auf einen Blick</p>
                 </div>
             </header>

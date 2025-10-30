@@ -1633,6 +1633,7 @@ body.showing-detail {
     z-index: 850;
     display: flex;
     justify-content: center;
+    align-items: flex-start;
     padding: clamp(0.75rem, 2.5vw, 1.6rem);
     background: rgba(5, 7, 15, 0.88);
     backdrop-filter: blur(24px);
@@ -1641,6 +1642,8 @@ body.showing-detail {
     pointer-events: none;
     transition: opacity var(--transition), transform var(--transition);
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
 }
 
 .detail-panel.is-active {
@@ -1650,7 +1653,7 @@ body.showing-detail {
 }
 
 .detail-viewport {
-    width: min(1200px, 100%);
+    width: min(1280px, 100%);
     min-height: calc(100vh - clamp(1.5rem, 5vw, 3rem));
     background: linear-gradient(180deg, rgba(14, 18, 32, 0.98) 0%, rgba(6, 8, 16, 0.98) 45%, rgba(5, 7, 15, 1) 100%);
     border-radius: clamp(1rem, 2vw, 1.5rem);
@@ -1663,7 +1666,7 @@ body.showing-detail {
 
 .player-hero {
     position: relative;
-    min-height: clamp(360px, 52vh, 540px);
+    min-height: clamp(360px, 48vh, 540px);
     display: flex;
     align-items: flex-end;
     isolation: isolate;
@@ -1689,7 +1692,7 @@ body.showing-detail {
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: clamp(1.2rem, 2.4vw, 1.8rem);
+    gap: clamp(1rem, 2vw, 1.6rem);
     width: 100%;
     padding: clamp(1.8rem, 4vw, 3.2rem);
 }
@@ -1723,16 +1726,17 @@ body.showing-detail {
 
 .player-hero__grid {
     display: grid;
-    grid-template-columns: clamp(180px, 22vw, 260px) minmax(0, 1fr);
-    gap: clamp(1.5rem, 4vw, 3rem);
-    align-items: end;
+    grid-template-columns: clamp(220px, 18vw, 280px) minmax(0, 2.1fr) minmax(260px, 0.9fr);
+    gap: clamp(1.8rem, 4vw, 3.2rem);
+    align-items: stretch;
 }
 
 .player-hero__poster {
     margin: 0;
     position: relative;
     aspect-ratio: 2 / 3;
-    max-width: clamp(180px, 22vw, 260px);
+    max-width: clamp(220px, 18vw, 280px);
+    align-self: stretch;
 }
 
 .player-hero__poster::after {
@@ -1759,11 +1763,80 @@ body.showing-detail {
     display: flex;
     flex-direction: column;
     gap: clamp(0.9rem, 2vw, 1.4rem);
+    justify-content: center;
 }
 
+.player-hero__labels {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.player-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.95rem;
+    border-radius: 999px;
+    background: rgba(12, 16, 30, 0.78);
+    border: 1px solid rgba(120, 144, 255, 0.35);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.player-hero__sidebar {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.player-hero__cta {
+    background: rgba(10, 14, 28, 0.8);
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(88, 166, 255, 0.28);
+    padding: clamp(1.1rem, 2.4vw, 1.6rem);
+    box-shadow: 0 24px 48px rgba(5, 7, 15, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.8rem, 2vw, 1.2rem);
+    color: var(--text-primary);
+    max-width: 360px;
+}
+
+.player-hero__cta-label {
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-strong);
+}
+
+.player-hero__cta-text {
+    margin: 0;
+    color: rgba(200, 210, 255, 0.8);
+    line-height: 1.55;
+}
+
+.player-hero__cta .player-hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.player-hero__cta .player-button {
+    justify-content: center;
+}
+
+
+.player-hero__heading h1,
 .player-hero__heading h2 {
     margin: 0;
-    font-size: clamp(2rem, 4vw, 2.9rem);
+    font-size: clamp(2.2rem, 4vw, 3.1rem);
+}
+.player-hero__heading h1::first-letter,
+.player-hero__heading h2::first-letter {
+    text-transform: uppercase;
 }
 
 .player-hero__tagline {
@@ -1783,6 +1856,7 @@ body.showing-detail {
     gap: 0.75rem;
     margin: 0;
     padding: 0;
+    align-items: center;
 }
 
 .player-hero__meta span {
@@ -1802,13 +1876,14 @@ body.showing-detail {
     margin: 0;
     color: rgba(220, 226, 255, 0.85);
     line-height: 1.65;
-    max-width: 68ch;
+    max-width: 70ch;
 }
 
 .player-hero__actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.9rem;
+    align-items: center;
 }
 
 .player-button {
@@ -1859,9 +1934,9 @@ body.showing-detail {
 
 .player-layout {
     display: grid;
-    grid-template-columns: minmax(0, 2.1fr) minmax(240px, 1fr);
-    gap: clamp(1.6rem, 3.2vw, 2.6rem);
-    padding: clamp(1.6rem, 4vw, 3rem);
+    grid-template-columns: minmax(0, 2.4fr) minmax(260px, 1fr);
+    gap: clamp(1.8rem, 3.2vw, 2.8rem);
+    padding: clamp(1.8rem, 4vw, 3.2rem);
 }
 
 .player-layout__primary,
@@ -1897,6 +1972,7 @@ body.showing-detail {
     gap: 1rem;
 }
 
+.player-card__header h2,
 .player-card__header h3 {
     margin: 0;
 }
@@ -2392,6 +2468,38 @@ body.showing-detail {
         padding: clamp(1.6rem, 5vw, 2.2rem);
     }
 
+    .player-hero__grid {
+        grid-template-columns: clamp(200px, 24vw, 260px) minmax(0, 1fr);
+        gap: clamp(1.6rem, 4vw, 2.6rem);
+    }
+
+    .player-hero__sidebar {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+    }
+
+    .player-hero__cta {
+        max-width: none;
+        flex-direction: row;
+        align-items: center;
+        gap: clamp(1rem, 2.4vw, 1.6rem);
+        flex-wrap: wrap;
+    }
+
+    .player-hero__cta-text {
+        flex: 1;
+        margin: 0;
+    }
+
+    .player-hero__cta .player-hero__actions {
+        flex-direction: row;
+        justify-content: flex-end;
+    }
+
+    .player-hero__cta .player-button {
+        flex: 1 1 auto;
+    }
+
     .player-layout {
         grid-template-columns: 1fr;
     }
@@ -2455,6 +2563,30 @@ body.showing-detail {
 
     .player-hero__poster {
         max-width: 220px;
+    }
+
+    .player-hero__sidebar {
+        width: min(360px, 100%);
+    }
+
+    .player-hero__cta {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: clamp(0.9rem, 4vw, 1.3rem);
+    }
+
+    .player-hero__cta-text {
+        margin: 0;
+    }
+
+    .player-hero__cta .player-button {
+        width: 100%;
+    }
+
+    .player-hero__cta .player-hero__actions {
+        flex-direction: column;
+        width: 100%;
     }
 
     .player-hero__actions {
