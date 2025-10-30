@@ -62,6 +62,31 @@
                 </header>
                 <div class="detail-section__body" id="detailStreaming" role="region" aria-live="polite"></div>
             </section>
+            <section class="detail-section detail-section--episodes" id="detailEpisodesSection" aria-labelledby="detailEpisodesTitle" hidden>
+                <header class="detail-section__header">
+                    <div>
+                        <span class="detail-eyebrow">Episoden</span>
+                        <h2 class="detail-section__title" id="detailEpisodesTitle">Staffeln &amp; Folgen</h2>
+                    </div>
+                    <p class="detail-section__subtitle">Wähle eine Episode, um den passenden Stream zu laden.</p>
+                </header>
+                <div class="detail-section__body detail-episodes" aria-live="polite">
+                    <div class="detail-episodes__controls">
+                        <label class="detail-episodes__label" for="detailSeasonSelect">Staffel auswählen</label>
+                        <select id="detailSeasonSelect" class="detail-episodes__select"></select>
+                    </div>
+                    <div class="detail-episodes__layout">
+                        <ul class="detail-episodes__list" id="detailEpisodeList"></ul>
+                        <article class="detail-episodes__info" id="detailEpisodeInfo">
+                            <header class="detail-episodes__head">
+                                <h3 class="detail-episodes__title" id="detailEpisodeTitle"></h3>
+                                <p class="detail-episodes__meta" id="detailEpisodeMeta"></p>
+                            </header>
+                            <p class="detail-episodes__overview" id="detailEpisodeOverview"></p>
+                        </article>
+                    </div>
+                </div>
+            </section>
             <section class="detail-section detail-section--overview">
                 <header class="detail-section__header">
                     <span class="detail-eyebrow">Handlung</span>

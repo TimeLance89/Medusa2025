@@ -10,6 +10,13 @@ const detailOverviewSecondary = document.getElementById('detailOverviewSecondary
 const detailCast = document.getElementById('detailCast');
 const detailStreaming = document.getElementById('detailStreaming');
 const detailFacts = document.getElementById('detailFacts');
+const detailLabel = document.getElementById('detailLabel');
+const detailEpisodesSection = document.getElementById('detailEpisodesSection');
+const detailSeasonSelect = document.getElementById('detailSeasonSelect');
+const detailEpisodeList = document.getElementById('detailEpisodeList');
+const detailEpisodeTitle = document.getElementById('detailEpisodeTitle');
+const detailEpisodeMeta = document.getElementById('detailEpisodeMeta');
+const detailEpisodeOverview = document.getElementById('detailEpisodeOverview');
 const detailBackButton = detailPanel?.querySelector('.detail-back');
 const watchButton = document.getElementById('detailWatch');
 const trailerButton = document.getElementById('detailTrailerButton');
@@ -119,6 +126,10 @@ let currentTrailer = null;
 let currentStreamingLinks = [];
 let currentMovieTitle = '';
 let currentMovieId = null;
+let currentContentType = 'movie';
+let currentSeriesData = null;
+let currentSeriesEpisodes = new Map();
+let currentSeriesSelection = { season: null, episode: null };
 let allMovies = [];
 let allMoviesSorted = [];
 let allMoviesPage = 1;
@@ -138,6 +149,26 @@ let heroSlides = [];
 let heroActiveIndex = 0;
 let heroRotationTimeout = null;
 const allMoviesRuntimeCache = new Map();
+
+detailSeasonSelect?.addEventListener('change', () => {
+  const seasonNumber = Number(detailSeasonSelect.value);
+  if (!Number.isFinite(seasonNumber)) {
+    return;
+  }
+  renderSeriesEpisodeList(seasonNumber);
+  const episodes = currentSeriesEpisodes.get(seasonNumber) || [];
+  if (!episodes.length) {
+    renderStreamingLinks([]);
+    return;
+  }
+  const preferred =
+    episodes.find(
+      (episode) => Array.isArray(episode?.streaming_links) && episode.streaming_links.some((link) => link && link.url)
+    ) || episodes[0];
+  if (preferred) {
+    selectSeriesEpisode(seasonNumber, preferred.episode_number);
+  }
+});
 
 function loadAllMoviesSortPreference() {
   if (typeof window === 'undefined' || !window.localStorage) {
@@ -167,6 +198,515 @@ function saveAllMoviesSortPreference(sort, direction) {
     window.localStorage.setItem(STORAGE_KEYS.allMoviesSort, payload);
   } catch (error) {
     console.warn('Konnte Sortierpräferenz nicht speichern.', error);
+  }
+}
+
+const SANDBOX_ATTRIBUTE_VALUE =
+  'allow-same-origin allow-scripts allow-forms allow-pointer-lock allow-fullscreen';
+
+function getStreamLabel(link, index) {
+  if (!link) {
+    return `Stream ${index + 1}`;
+  }
+  const parts = [];
+  if (link.source_name) {
+    parts.push(link.source_name);
+  }
+  if (link.mirror_info && link.mirror_info !== link.source_name) {
+    parts.push(link.mirror_info);
+  }
+  if (!parts.length) {
+    parts.push(`Stream ${index + 1}`);
+  }
+  return parts.join(' · ');
+}
+
+function getStreamMeta(link) {
+  if (!link) {
+    return 'Keine weiteren Informationen verfügbar.';
+  }
+  const parts = [];
+  if (link.mirror_info && link.mirror_info !== link.source_name) {
+    parts.push(link.mirror_info);
+  }
+  if (link.additional_info) {
+    parts.push(link.additional_info);
+  }
+  if (link.quality) {
+    parts.push(link.quality);
+  }
+  try {
+    const url = new URL(link.url);
+    const host = url.hostname.replace(/^www\./, '');
+    if (host && !parts.includes(host)) {
+      parts.push(host);
+    }
+  } catch (_) {
+    /* ignore invalid urls */
+  }
+  return parts.length ? parts.join(' · ') : 'Direkte Quelle';
+}
+
+function shouldUseSandboxForLink(link) {
+  if (!link) {
+    return false;
+  }
+  const providerName =
+    (typeof link.provider === 'string' && link.provider.trim()) ||
+    (typeof link.source_name === 'string' && link.source_name.trim()) ||
+    '';
+  return providerName.toLowerCase() === 'kinox';
+}
+
+function applyIframeSandbox(frame, link) {
+  if (!frame) {
+    return;
+  }
+  if (shouldUseSandboxForLink(link)) {
+    frame.setAttribute('sandbox', SANDBOX_ATTRIBUTE_VALUE);
+  } else {
+    frame.removeAttribute('sandbox');
+  }
+}
+
+function applyWatchButtonLink(link, index = 0) {
+  if (!watchButton) {
+    return;
+  }
+  if (!link) {
+    watchButton.disabled = true;
+    watchButton.removeAttribute('data-stream-url');
+    watchButton.removeAttribute('data-stream-name');
+    if (watchButtonLabel) {
+      watchButtonLabel.textContent = watchButtonDefaultLabel;
+    }
+    return;
+  }
+
+  watchButton.disabled = false;
+  watchButton.dataset.streamUrl = link.url;
+  watchButton.dataset.streamName = link.source_name || '';
+  if (watchButtonLabel) {
+    const labelText = getStreamLabel(link, index);
+    const streamLabel = labelText ? `Stream öffnen (${labelText})` : 'Stream öffnen';
+    watchButtonLabel.textContent = streamLabel;
+  }
+}
+
+function renderStreamingLinks(streamingLinks, { onSelect } = {}) {
+  currentStreamingLinks = Array.isArray(streamingLinks)
+    ? streamingLinks.filter((link) => link && link.url)
+    : [];
+
+  if (detailStreaming) {
+    detailStreaming.innerHTML = '';
+  }
+
+  if (!detailStreaming) {
+    applyWatchButtonLink(null);
+    return;
+  }
+
+  if (!currentStreamingLinks.length) {
+    const empty = document.createElement('div');
+    empty.classList.add('stream-area__empty');
+
+    const emptyTitle = document.createElement('strong');
+    emptyTitle.textContent = 'Keine Streams verfügbar.';
+
+    const emptyText = document.createElement('span');
+    emptyText.textContent = 'Sobald neue Quellen gefunden werden, erscheinen sie automatisch hier.';
+
+    empty.appendChild(emptyTitle);
+    empty.appendChild(emptyText);
+    detailStreaming.appendChild(empty);
+    applyWatchButtonLink(null);
+    return;
+  }
+
+  const area = document.createElement('div');
+  area.classList.add('stream-area');
+
+  const primary = document.createElement('div');
+  primary.classList.add('stream-area__primary');
+
+  const preview = document.createElement('article');
+  preview.classList.add('stream-preview');
+
+  const previewHead = document.createElement('header');
+  previewHead.classList.add('stream-preview__head');
+
+  const previewBadge = document.createElement('span');
+  previewBadge.classList.add('stream-preview__badge');
+  previewBadge.textContent = 'Aktiver Stream';
+
+  const previewTitle = document.createElement('h4');
+  previewTitle.classList.add('stream-preview__title');
+
+  const previewMeta = document.createElement('p');
+  previewMeta.classList.add('stream-preview__meta');
+
+  previewHead.appendChild(previewBadge);
+  previewHead.appendChild(previewTitle);
+  previewHead.appendChild(previewMeta);
+
+  const frameWrapper = document.createElement('div');
+  frameWrapper.classList.add('stream-preview__frame');
+
+  const frame = document.createElement('iframe');
+  frame.loading = 'lazy';
+  frame.allowFullscreen = true;
+  frame.referrerPolicy = 'no-referrer';
+  frame.setAttribute(
+    'allow',
+    'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen',
+  );
+
+  frameWrapper.appendChild(frame);
+
+  const previewFooter = document.createElement('div');
+  previewFooter.classList.add('stream-preview__footer');
+
+  const fallback = document.createElement('a');
+  fallback.classList.add('stream-preview__external');
+  fallback.target = '_self';
+  fallback.rel = 'noopener';
+  fallback.textContent = 'Im aktuellen Tab öffnen';
+
+  const previewNote = document.createElement('p');
+  previewNote.classList.add('stream-preview__note');
+  previewNote.textContent = 'Bei Problemen kannst du den Stream auch direkt im Browser starten.';
+
+  previewFooter.appendChild(fallback);
+  previewFooter.appendChild(previewNote);
+
+  preview.appendChild(previewHead);
+  preview.appendChild(frameWrapper);
+  preview.appendChild(previewFooter);
+
+  primary.appendChild(preview);
+
+  const sidebar = document.createElement('aside');
+  sidebar.classList.add('stream-area__sidebar');
+
+  const sources = document.createElement('div');
+  sources.classList.add('stream-sources');
+
+  const sourcesHead = document.createElement('header');
+  sourcesHead.classList.add('stream-sources__head');
+
+  const sourcesEyebrow = document.createElement('span');
+  sourcesEyebrow.classList.add('stream-sources__eyebrow');
+  sourcesEyebrow.textContent = 'Quellenübersicht';
+
+  const sourcesTitle = document.createElement('h4');
+  sourcesTitle.classList.add('stream-sources__title');
+  sourcesTitle.textContent = 'Verfügbare Mirrors';
+
+  const sourcesSubtitle = document.createElement('p');
+  sourcesSubtitle.classList.add('stream-sources__subtitle');
+  sourcesSubtitle.textContent = 'Wähle eine Quelle für den Player oder öffne sie direkt.';
+
+  sourcesHead.appendChild(sourcesEyebrow);
+  sourcesHead.appendChild(sourcesTitle);
+  sourcesHead.appendChild(sourcesSubtitle);
+
+  const list = document.createElement('ul');
+  list.classList.add('stream-sources__list');
+
+  const sourceButtons = [];
+
+  const updateSelection = (index) => {
+    const link = currentStreamingLinks[index];
+    sourceButtons.forEach((btn, btnIndex) => {
+      const isActive = btnIndex === index && Boolean(link);
+      btn.classList.toggle('is-active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+
+    if (!link) {
+      previewTitle.textContent = 'Kein Stream verfügbar';
+      previewMeta.textContent = 'Bitte wähle eine andere Quelle aus.';
+      frame.removeAttribute('src');
+      frame.removeAttribute('title');
+      fallback.removeAttribute('href');
+      fallback.setAttribute('aria-disabled', 'true');
+      fallback.setAttribute('tabindex', '-1');
+      applyIframeSandbox(frame, null);
+      applyWatchButtonLink(null);
+      if (typeof onSelect === 'function') {
+        onSelect(null, index);
+      }
+      return;
+    }
+
+    const labelText = getStreamLabel(link, index);
+    previewTitle.textContent = labelText;
+    previewMeta.textContent = getStreamMeta(link);
+    if (frame.src !== link.url) {
+      frame.src = link.url;
+    }
+    frame.title = `${labelText} – Stream Player`;
+    applyIframeSandbox(frame, link);
+    fallback.href = link.url;
+    fallback.removeAttribute('aria-disabled');
+    fallback.removeAttribute('tabindex');
+    fallback.setAttribute('aria-label', `Stream ${labelText} im aktuellen Tab öffnen`);
+    applyWatchButtonLink(link, index);
+    if (typeof onSelect === 'function') {
+      onSelect(link, index);
+    }
+  };
+
+  currentStreamingLinks.forEach((link, index) => {
+    const item = document.createElement('li');
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.classList.add('stream-source');
+    button.setAttribute('aria-pressed', 'false');
+    button.dataset.streamIndex = String(index);
+
+    const name = document.createElement('span');
+    name.classList.add('stream-source__name');
+    name.textContent = link?.source_name || `Stream ${index + 1}`;
+
+    const meta = document.createElement('span');
+    meta.classList.add('stream-source__meta');
+    meta.textContent = getStreamMeta(link);
+
+    const cta = document.createElement('span');
+    cta.classList.add('stream-source__cta');
+    cta.textContent = 'Zum Player';
+
+    button.appendChild(name);
+    button.appendChild(meta);
+    button.appendChild(cta);
+
+    button.addEventListener('click', () => {
+      updateSelection(index);
+    });
+
+    item.appendChild(button);
+    list.appendChild(item);
+    sourceButtons.push(button);
+  });
+
+  sources.appendChild(sourcesHead);
+  sources.appendChild(list);
+  sidebar.appendChild(sources);
+
+  area.appendChild(primary);
+  area.appendChild(sidebar);
+
+  detailStreaming.appendChild(area);
+
+  updateSelection(0);
+}
+
+function resetSeriesDetail() {
+  currentSeriesData = null;
+  currentSeriesEpisodes = new Map();
+  currentSeriesSelection = { season: null, episode: null };
+  if (detailEpisodesSection) {
+    detailEpisodesSection.hidden = true;
+  }
+  if (detailSeasonSelect) {
+    detailSeasonSelect.innerHTML = '';
+  }
+  if (detailEpisodeList) {
+    detailEpisodeList.innerHTML = '';
+  }
+  if (detailEpisodeTitle) {
+    detailEpisodeTitle.textContent = '';
+  }
+  if (detailEpisodeMeta) {
+    detailEpisodeMeta.textContent = '';
+  }
+  if (detailEpisodeOverview) {
+    detailEpisodeOverview.textContent = '';
+  }
+}
+
+function getSeriesEpisode(seasonNumber, episodeNumber) {
+  const episodes = currentSeriesEpisodes.get(seasonNumber) || [];
+  return episodes.find((episode) => Number(episode?.episode_number) === Number(episodeNumber));
+}
+
+function updateEpisodeSelectionHighlight() {
+  if (!detailEpisodeList) {
+    return;
+  }
+  const { season, episode } = currentSeriesSelection;
+  detailEpisodeList.querySelectorAll('[data-season][data-episode]').forEach((button) => {
+    const matches =
+      Number(button.dataset.season) === Number(season) &&
+      Number(button.dataset.episode) === Number(episode);
+    button.classList.toggle('is-active', matches);
+  });
+}
+
+function renderSeriesEpisodeList(seasonNumber) {
+  if (!detailEpisodeList) {
+    return;
+  }
+
+  detailEpisodeList.innerHTML = '';
+  const episodes = currentSeriesEpisodes.get(seasonNumber) || [];
+
+  if (!episodes.length) {
+    const empty = document.createElement('li');
+    empty.classList.add('empty');
+    empty.textContent = 'Keine Episoden für diese Staffel verfügbar.';
+    detailEpisodeList.appendChild(empty);
+    return;
+  }
+
+  episodes.forEach((episode) => {
+    if (!episode) {
+      return;
+    }
+    const episodeNumber = Number(episode.episode_number);
+    if (!Number.isFinite(episodeNumber)) {
+      return;
+    }
+
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.classList.add('episode-item');
+    button.dataset.season = String(seasonNumber);
+    button.dataset.episode = String(episodeNumber);
+
+    const name = document.createElement('span');
+    name.classList.add('episode-item__title');
+    const formattedNumber = `S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`;
+    name.textContent = episode.name ? `${formattedNumber} · ${episode.name}` : formattedNumber;
+
+    const streamCount = Array.isArray(episode.streaming_links)
+      ? episode.streaming_links.filter((link) => link && link.url).length
+      : 0;
+    const meta = document.createElement('span');
+    meta.classList.add('episode-item__meta');
+    meta.textContent = streamCount
+      ? `${streamCount} Stream${streamCount === 1 ? '' : 's'}`
+      : 'Keine Streams';
+
+    button.appendChild(name);
+    button.appendChild(meta);
+
+    button.addEventListener('click', () => {
+      selectSeriesEpisode(seasonNumber, episodeNumber, { focusList: false });
+    });
+
+    li.appendChild(button);
+    detailEpisodeList.appendChild(li);
+  });
+
+  updateEpisodeSelectionHighlight();
+}
+
+function selectSeriesEpisode(seasonNumber, episodeNumber, { focusList = false } = {}) {
+  const seasonValue = Number(seasonNumber);
+  const episodeValue = Number(episodeNumber);
+  if (!Number.isFinite(seasonValue) || !Number.isFinite(episodeValue)) {
+    return;
+  }
+
+  if (detailSeasonSelect && detailSeasonSelect.value !== String(seasonValue)) {
+    detailSeasonSelect.value = String(seasonValue);
+  }
+
+  const episode = getSeriesEpisode(seasonValue, episodeValue);
+  currentSeriesSelection = { season: seasonValue, episode: episodeValue };
+  updateEpisodeSelectionHighlight();
+
+  if (focusList && detailEpisodeList) {
+    const activeButton = detailEpisodeList.querySelector(
+      `[data-season="${seasonValue}"][data-episode="${episodeValue}"]`
+    );
+    if (activeButton) {
+      activeButton.focus();
+    }
+  }
+
+  const formattedNumber = `S${String(seasonValue).padStart(2, '0')}E${String(episodeValue).padStart(2, '0')}`;
+  if (detailEpisodeTitle) {
+    detailEpisodeTitle.textContent = episode?.name ? `${formattedNumber} · ${episode.name}` : formattedNumber;
+  }
+  if (detailEpisodeMeta) {
+    const date = episode?.air_date ? formatDate(episode.air_date) : '';
+    const runtime = Number(episode?.runtime);
+    const parts = [];
+    if (date) {
+      parts.push(date);
+    }
+    if (Number.isFinite(runtime) && runtime > 0) {
+      parts.push(`${runtime} Min.`);
+    }
+    detailEpisodeMeta.textContent = parts.length ? parts.join(' · ') : 'Keine Episodendetails verfügbar';
+  }
+  if (detailEpisodeOverview) {
+    detailEpisodeOverview.textContent = episode?.overview || 'Keine Beschreibung verfügbar.';
+  }
+
+  const links = Array.isArray(episode?.streaming_links) ? episode.streaming_links : [];
+  const seriesBaseTitle = currentSeriesData?.title || currentSeriesData?.name || 'Unbekannter Titel';
+  const baseTitle = `${seriesBaseTitle} – ${formattedNumber}`;
+  currentMovieTitle = baseTitle;
+  renderStreamingLinks(links, {
+    onSelect: (link, index) => {
+      if (link) {
+        currentMovieTitle = `${baseTitle} – ${getStreamLabel(link, index)}`;
+      } else {
+        currentMovieTitle = baseTitle;
+      }
+    },
+  });
+}
+
+function setupSeriesEpisodes(series) {
+  resetSeriesDetail();
+  if (!series || !Array.isArray(series.seasons) || !series.seasons.length) {
+    renderStreamingLinks([]);
+    return;
+  }
+
+  currentSeriesData = series;
+  if (detailEpisodesSection) {
+    detailEpisodesSection.hidden = false;
+  }
+
+  const selectableSeasons = series.seasons.filter(
+    (season) => season && Number.isFinite(Number(season.season_number))
+  );
+
+  selectableSeasons.sort((a, b) => Number(a.season_number) - Number(b.season_number));
+
+  selectableSeasons.forEach((season) => {
+    const seasonNumber = Number(season.season_number);
+    if (!Number.isFinite(seasonNumber)) {
+      return;
+    }
+    const episodes = Array.isArray(season.episodes) ? season.episodes : [];
+    currentSeriesEpisodes.set(seasonNumber, episodes);
+
+    if (detailSeasonSelect) {
+      const option = document.createElement('option');
+      option.value = String(seasonNumber);
+      option.textContent = season.name || `Staffel ${seasonNumber}`;
+      option.dataset.episodeCount = String(season.episode_count || episodes.length || 0);
+      detailSeasonSelect.appendChild(option);
+    }
+  });
+
+  if (detailSeasonSelect) {
+    detailSeasonSelect.disabled = detailSeasonSelect.options.length <= 1;
+  }
+
+  if (detailSeasonSelect && detailSeasonSelect.options.length) {
+    detailSeasonSelect.value = detailSeasonSelect.options[0].value;
+    renderSeriesEpisodeList(Number(detailSeasonSelect.value));
   }
 }
 
@@ -1608,7 +2148,7 @@ async function saveSettings(event) {
 
 function bindContentCards() {
   const triggers = document.querySelectorAll(
-    '.media-card[data-movie-id], .card[data-movie-id], .view-detail[data-movie-id], .scraper-card[data-movie-id], .detail-all-card[data-movie-id]'
+    '.media-card[data-movie-id], .card[data-movie-id], .view-detail[data-movie-id], .scraper-card[data-movie-id], .detail-all-card[data-movie-id], .media-card[data-series-id], .card[data-series-id], .view-detail[data-series-id], .scraper-card[data-series-id]'
   );
 
   triggers.forEach((element) => {
@@ -1623,6 +2163,12 @@ function bindContentCards() {
         }
       }
       const movieId = element.dataset.movieId;
+      const seriesId = element.dataset.seriesId;
+      if (seriesId) {
+        hideSearchOverlay();
+        openSeriesDetail(seriesId);
+        return;
+      }
       if (movieId) {
         hideSearchOverlay();
         openMovieDetail(movieId);
@@ -2217,6 +2763,11 @@ function resetDetailView() {
   currentStreamingLinks = [];
   currentMovieTitle = '';
   currentMovieId = null;
+  currentContentType = 'movie';
+  if (detailLabel) {
+    detailLabel.textContent = 'Film';
+  }
+  resetSeriesDetail();
   updateAllMoviesActive(null);
   closeTrailerModal();
 }
@@ -2311,7 +2862,23 @@ async function openMovieDetail(movieId) {
   }
 }
 
-function populateDetail(movie) {
+async function openSeriesDetail(seriesId) {
+  try {
+    if (currentSectionName !== 'detail') {
+      previousSectionName = currentSectionName;
+    }
+    showDetailLoadingState();
+    changeSection('detail');
+    const { success, series } = await callApi(`/api/series/${seriesId}`);
+    if (!success) return;
+    populateDetail(series);
+  } catch (_) {
+    closeDetail();
+  }
+}
+
+
+function populateDetail(item) {
   if (
     !detailPanel ||
     !detailPoster ||
@@ -2320,54 +2887,73 @@ function populateDetail(movie) {
     !detailMeta ||
     !detailCast ||
     !detailStreaming ||
-    !detailOverview ||
-    !detailTagline ||
     !detailFacts
   ) {
     return;
   }
 
-  const posterPlaceholder = detailPoster.dataset.placeholder || '';
-  const posterUrl = movie.poster_url || posterPlaceholder;
-  const backdropUrl = movie.backdrop_url || posterUrl;
+  const contentType = (item?.content_type || 'movie').toLowerCase();
+  const isSeries = contentType === 'series';
+  currentContentType = contentType;
 
-  currentMovieId = typeof movie.id === 'number' ? movie.id : null;
-  currentMovieTitle = movie.title || 'Unbekannter Titel';
+  currentMovieId = isSeries ? null : item?.id ?? null;
+  currentMovieTitle = item?.title || item?.name || 'Unbekannter Titel';
 
-  detailPoster.src = posterUrl;
-  detailPoster.alt = currentMovieTitle;
-  detailBackdrop.style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
-  detailTitle.textContent = currentMovieTitle;
-
-  if (movie.tagline) {
-    detailTagline.textContent = movie.tagline;
-    detailTagline.style.display = '';
-  } else {
-    detailTagline.textContent = '';
-    detailTagline.style.display = 'none';
+  if (detailLabel) {
+    detailLabel.textContent = isSeries ? 'Serie' : 'Film';
   }
 
-  const overviewText = movie.overview || 'Keine Beschreibung verfügbar.';
-  const overviewShort = overviewText.length > 220 ? `${overviewText.slice(0, 217)}…` : overviewText;
-  detailOverview.textContent = overviewShort;
+  if (detailPoster) {
+    detailPoster.src = getMoviePosterUrl(item);
+    detailPoster.alt = currentMovieTitle;
+  }
+
+  const backdropUrl =
+    (item?.backdrop_url && item.backdrop_url.trim()) ||
+    (item?.backdrop_path ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}` : '') ||
+    '';
+  if (detailBackdrop) {
+    detailBackdrop.style.backgroundImage = backdropUrl ? `url('${backdropUrl}')` : 'none';
+  }
+
+  if (detailTitle) {
+    detailTitle.textContent = currentMovieTitle;
+  }
+  if (detailTagline) {
+    const tagline = item?.tagline || '';
+    detailTagline.textContent = tagline;
+    detailTagline.style.display = tagline ? '' : 'none';
+  }
+  if (detailOverview) {
+    detailOverview.textContent = item?.overview || 'Keine Beschreibung verfügbar.';
+  }
   if (detailOverviewSecondary) {
-    detailOverviewSecondary.textContent = overviewText;
+    detailOverviewSecondary.textContent = item?.overview || '';
   }
 
   detailMeta.innerHTML = '';
   const metaEntries = [];
-  const releaseYear = movie.release_date ? movie.release_date.split('-')[0] : '';
-  if (releaseYear) {
-    metaEntries.push(releaseYear);
+  if (isSeries) {
+    if (item?.first_air_date) {
+      metaEntries.push(formatDate(item.first_air_date));
+    }
+    if (item?.last_air_date && item.last_air_date !== item.first_air_date) {
+      metaEntries.push(`Letzte Folge ${formatDate(item.last_air_date)}`);
+    }
+  } else {
+    const releaseYear = item?.release_date ? item.release_date.split('-')[0] : '';
+    if (releaseYear) {
+      metaEntries.push(releaseYear);
+    }
+    if (Number.isFinite(item?.runtime) && item.runtime > 0) {
+      metaEntries.push(`${item.runtime} Min.`);
+    }
   }
-  if (Number.isFinite(movie.runtime) && movie.runtime > 0) {
-    metaEntries.push(`${movie.runtime} Min.`);
+  if (typeof item?.rating === 'number' && item.rating > 0) {
+    metaEntries.push(`⭐ ${item.rating.toFixed(1)}`);
   }
-  if (typeof movie.rating === 'number' && movie.rating > 0) {
-    metaEntries.push(`⭐ ${movie.rating.toFixed(1)}`);
-  }
-  const genreNames = Array.isArray(movie.genres)
-    ? movie.genres
+  const genreNames = Array.isArray(item?.genres)
+    ? item.genres
         .map((genre) => {
           if (!genre) return null;
           if (typeof genre === 'string') return genre;
@@ -2379,6 +2965,14 @@ function populateDetail(movie) {
   if (genreNames.length) {
     metaEntries.push(...genreNames.slice(0, 3));
   }
+  if (isSeries) {
+    if (item?.total_seasons) {
+      metaEntries.push(`${item.total_seasons} Staffel${item.total_seasons === 1 ? '' : 'n'}`);
+    }
+    if (item?.total_episodes) {
+      metaEntries.push(`${item.total_episodes} Episode${item.total_episodes === 1 ? '' : 'n'}`);
+    }
+  }
   if (!metaEntries.length) {
     metaEntries.push('Keine zusätzlichen Infos');
   }
@@ -2388,95 +2982,59 @@ function populateDetail(movie) {
     detailMeta.appendChild(span);
   });
 
-  const streamingLinks = Array.isArray(movie.streaming_links)
-    ? movie.streaming_links.filter((link) => link && link.url)
-    : [];
-  currentStreamingLinks = streamingLinks;
-
-  const getStreamLabel = (link, index) => {
-    if (!link) {
-      return `Stream ${index + 1}`;
-    }
-    const parts = [];
-    if (link.source_name) {
-      parts.push(link.source_name);
-    }
-    if (link.mirror_info && link.mirror_info !== link.source_name) {
-      parts.push(link.mirror_info);
-    }
-    if (!parts.length) {
-      parts.push(`Stream ${index + 1}`);
-    }
-    return parts.join(' · ');
-  };
-
-  const SANDBOX_ATTRIBUTE_VALUE =
-    'allow-same-origin allow-scripts allow-forms allow-pointer-lock allow-fullscreen';
-
-  const shouldUseSandboxForLink = (link) => {
-    if (!link) {
-      return false;
-    }
-    const providerName =
-      (typeof link.provider === 'string' && link.provider.trim()) ||
-      (typeof link.source_name === 'string' && link.source_name.trim()) ||
-      '';
-    return providerName.toLowerCase() === 'kinox';
-  };
-
-  const applyIframeSandbox = (frame, link) => {
-    if (!frame) {
-      return;
-    }
-    if (shouldUseSandboxForLink(link)) {
-      frame.setAttribute('sandbox', SANDBOX_ATTRIBUTE_VALUE);
-    } else {
-      frame.removeAttribute('sandbox');
-    }
-  };
-
-  const applyWatchButtonLink = (link, index = 0) => {
-    if (!watchButton) {
-      return;
-    }
-    if (!link) {
-      watchButton.disabled = true;
-      watchButton.removeAttribute('data-stream-url');
-      watchButton.removeAttribute('data-stream-name');
-      if (watchButtonLabel) {
-        watchButtonLabel.textContent = watchButtonDefaultLabel;
-      }
-      return;
-    }
-
-    watchButton.disabled = false;
-    watchButton.dataset.streamUrl = link.url;
-    watchButton.dataset.streamName = link.source_name || '';
-    if (watchButtonLabel) {
-      const labelText = getStreamLabel(link, index);
-      const streamLabel = labelText ? `Stream öffnen (${labelText})` : 'Stream öffnen';
-      watchButtonLabel.textContent = streamLabel;
-    }
-  };
-
   detailFacts.innerHTML = '';
   const facts = [];
-  const formattedDate = formatDate(movie.release_date);
-  if (formattedDate) {
-    facts.push({ label: 'Veröffentlichung', value: formattedDate });
+  if (isSeries) {
+    const firstAir = formatDate(item?.first_air_date);
+    const lastAir = formatDate(item?.last_air_date);
+    if (firstAir) {
+      facts.push({ label: 'Erstausstrahlung', value: firstAir });
+    }
+    if (lastAir) {
+      facts.push({ label: 'Letzte Ausstrahlung', value: lastAir });
+    }
+    if (item?.status) {
+      facts.push({ label: 'Status', value: item.status });
+    }
+    if (item?.total_seasons) {
+      facts.push({ label: 'Staffeln', value: String(item.total_seasons) });
+    }
+    if (item?.total_episodes) {
+      facts.push({ label: 'Episoden', value: String(item.total_episodes) });
+    }
+    if (Array.isArray(item?.episode_run_time) && item.episode_run_time.length) {
+      const runtimeValue = item.episode_run_time.find((value) => Number.isFinite(Number(value)));
+      if (runtimeValue) {
+        facts.push({ label: 'Laufzeit', value: `${runtimeValue} Minuten` });
+      }
+    }
+    if (genreNames.length) {
+      const label = genreNames.length === 1 ? 'Genre' : 'Genres';
+      facts.push({ label, value: genreNames.join(', ') });
+    }
+  } else {
+    const formattedDate = formatDate(item?.release_date);
+    if (formattedDate) {
+      facts.push({ label: 'Veröffentlichung', value: formattedDate });
+    }
+    if (Number.isFinite(item?.runtime) && item.runtime > 0) {
+      facts.push({ label: 'Laufzeit', value: `${item.runtime} Minuten` });
+    }
+    if (typeof item?.rating === 'number' && item.rating > 0) {
+      facts.push({ label: 'Bewertung', value: `${item.rating.toFixed(1)} / 10` });
+    }
+    if (genreNames.length) {
+      const label = genreNames.length === 1 ? 'Genre' : 'Genres';
+      facts.push({ label, value: genreNames.join(', ') });
+    }
+    const streamCount = Array.isArray(item?.streaming_links)
+      ? item.streaming_links.filter((link) => link && link.url).length
+      : 0;
+    facts.push({
+      label: 'Streams',
+      value: streamCount ? `${streamCount} Quelle${streamCount === 1 ? '' : 'n'}` : 'Keine Quellen',
+    });
   }
-  if (Number.isFinite(movie.runtime) && movie.runtime > 0) {
-    facts.push({ label: 'Laufzeit', value: `${movie.runtime} Minuten` });
-  }
-  if (typeof movie.rating === 'number' && movie.rating > 0) {
-    facts.push({ label: 'Bewertung', value: `${movie.rating.toFixed(1)} / 10` });
-  }
-  if (genreNames.length) {
-    const label = genreNames.length === 1 ? 'Genre' : 'Genres';
-    facts.push({ label, value: genreNames.join(', ') });
-  }
-  const streamCount = streamingLinks.length;
-  facts.push({ label: 'Streams', value: streamCount ? `${streamCount} Quelle${streamCount === 1 ? '' : 'n'}` : 'Keine Quellen' });
 
   if (facts.length) {
     facts.forEach((fact) => {
@@ -2500,12 +3058,13 @@ function populateDetail(movie) {
 
   detailCast.innerHTML = '';
   const castPlaceholder = detailCast.dataset.placeholder || '';
-  const castEntries = Array.isArray(movie.cast) ? movie.cast.filter(Boolean) : [];
+  const castEntries = Array.isArray(item?.cast) ? item.cast.filter(Boolean) : [];
 
   if (castEntries.length) {
     castEntries.forEach((entry) => {
       const castItem = typeof entry === 'string' ? { name: entry } : entry || {};
-      const name = (typeof castItem.name === 'string' && castItem.name.trim()) ||
+      const name =
+        (typeof castItem.name === 'string' && castItem.name.trim()) ||
         (typeof entry === 'string' ? entry : '');
       if (!name) {
         return;
@@ -2568,226 +3127,38 @@ function populateDetail(movie) {
     detailCast.appendChild(li);
   }
 
-  detailStreaming.innerHTML = '';
-  if (streamingLinks.length) {
-    const area = document.createElement('div');
-    area.classList.add('stream-area');
-
-    const primary = document.createElement('div');
-    primary.classList.add('stream-area__primary');
-
-    const preview = document.createElement('article');
-    preview.classList.add('stream-preview');
-
-    const previewHead = document.createElement('header');
-    previewHead.classList.add('stream-preview__head');
-
-    const previewBadge = document.createElement('span');
-    previewBadge.classList.add('stream-preview__badge');
-    previewBadge.textContent = 'Aktiver Stream';
-
-    const previewTitle = document.createElement('h4');
-    previewTitle.classList.add('stream-preview__title');
-
-    const previewMeta = document.createElement('p');
-    previewMeta.classList.add('stream-preview__meta');
-
-    previewHead.appendChild(previewBadge);
-    previewHead.appendChild(previewTitle);
-    previewHead.appendChild(previewMeta);
-
-    const frameWrapper = document.createElement('div');
-    frameWrapper.classList.add('stream-preview__frame');
-
-    const frame = document.createElement('iframe');
-    frame.loading = 'lazy';
-    frame.allowFullscreen = true;
-    frame.setAttribute('allowfullscreen', '');
-    frame.setAttribute('webkitallowfullscreen', '');
-    frame.setAttribute('mozallowfullscreen', '');
-    frame.referrerPolicy = 'no-referrer';
-    frame.setAttribute(
-      'allow',
-      'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen',
-    );
-
-    frameWrapper.appendChild(frame);
-
-    const previewFooter = document.createElement('div');
-    previewFooter.classList.add('stream-preview__footer');
-
-    const fallback = document.createElement('a');
-    fallback.classList.add('stream-preview__external');
-    fallback.target = '_self';
-    fallback.rel = 'noopener';
-    fallback.textContent = 'Im aktuellen Tab öffnen';
-
-    const previewNote = document.createElement('p');
-    previewNote.classList.add('stream-preview__note');
-    previewNote.textContent = 'Bei Problemen kannst du den Stream auch direkt im Browser starten.';
-
-    previewFooter.appendChild(fallback);
-    previewFooter.appendChild(previewNote);
-
-    preview.appendChild(previewHead);
-    preview.appendChild(frameWrapper);
-    preview.appendChild(previewFooter);
-
-    primary.appendChild(preview);
-
-    const sidebar = document.createElement('aside');
-    sidebar.classList.add('stream-area__sidebar');
-
-    const sources = document.createElement('div');
-    sources.classList.add('stream-sources');
-
-    const sourcesHead = document.createElement('header');
-    sourcesHead.classList.add('stream-sources__head');
-
-    const sourcesEyebrow = document.createElement('span');
-    sourcesEyebrow.classList.add('stream-sources__eyebrow');
-    sourcesEyebrow.textContent = 'Quellenübersicht';
-
-    const sourcesTitle = document.createElement('h4');
-    sourcesTitle.classList.add('stream-sources__title');
-    sourcesTitle.textContent = 'Verfügbare Mirrors';
-
-    const sourcesSubtitle = document.createElement('p');
-    sourcesSubtitle.classList.add('stream-sources__subtitle');
-    sourcesSubtitle.textContent = 'Wähle eine Quelle für den Player oder öffne sie direkt.';
-
-    sourcesHead.appendChild(sourcesEyebrow);
-    sourcesHead.appendChild(sourcesTitle);
-    sourcesHead.appendChild(sourcesSubtitle);
-
-    const list = document.createElement('ul');
-    list.classList.add('stream-sources__list');
-
-    const sourceButtons = [];
-
-    const getStreamMeta = (link) => {
-      if (!link) {
-        return 'Keine weiteren Informationen verfügbar.';
-      }
-      const parts = [];
-      if (link.mirror_info && link.mirror_info !== link.source_name) {
-        parts.push(link.mirror_info);
-      }
-      if (link.additional_info) {
-        parts.push(link.additional_info);
-      }
-      if (link.quality) {
-        parts.push(link.quality);
-      }
-      try {
-        const url = new URL(link.url);
-        const host = url.hostname.replace(/^www\./, '');
-        if (host && !parts.includes(host)) {
-          parts.push(host);
+  if (isSeries) {
+    setupSeriesEpisodes(item);
+    const defaultEpisode = item?.default_episode;
+    if (defaultEpisode && Number.isFinite(Number(defaultEpisode.season_number))) {
+      selectSeriesEpisode(defaultEpisode.season_number, defaultEpisode.episode_number);
+    } else {
+      const seasonNumbers = Array.from(currentSeriesEpisodes.keys()).sort((a, b) => a - b);
+      if (seasonNumbers.length) {
+        const firstSeason = seasonNumbers[0];
+        const episodes = currentSeriesEpisodes.get(firstSeason) || [];
+        const preferredEpisode =
+          episodes.find(
+            (episode) =>
+              Array.isArray(episode?.streaming_links) && episode.streaming_links.some((link) => link && link.url)
+          ) || episodes[0];
+        if (preferredEpisode) {
+          selectSeriesEpisode(firstSeason, preferredEpisode.episode_number);
+        } else {
+          renderStreamingLinks([]);
         }
-      } catch (_) {
-        /* ignore invalid urls */
+      } else {
+        renderStreamingLinks([]);
       }
-      return parts.length ? parts.join(' · ') : 'Direkte Quelle';
-    };
-
-    const updateSelection = (index) => {
-      const link = streamingLinks[index];
-      sourceButtons.forEach((btn, btnIndex) => {
-        const isActive = btnIndex === index && Boolean(link);
-        btn.classList.toggle('is-active', isActive);
-        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-
-      if (!link) {
-        previewTitle.textContent = 'Kein Stream verfügbar';
-        previewMeta.textContent = 'Bitte wähle eine andere Quelle aus.';
-        frame.removeAttribute('src');
-        frame.removeAttribute('title');
-        fallback.removeAttribute('href');
-        fallback.setAttribute('aria-disabled', 'true');
-        fallback.setAttribute('tabindex', '-1');
-        applyIframeSandbox(frame, null);
-        applyWatchButtonLink(null);
-        return;
-      }
-
-      const labelText = getStreamLabel(link, index);
-      previewTitle.textContent = labelText;
-      previewMeta.textContent = getStreamMeta(link);
-      if (frame.src !== link.url) {
-        frame.src = link.url;
-      }
-      frame.title = `${labelText} – Stream Player`;
-      applyIframeSandbox(frame, link);
-      fallback.href = link.url;
-      fallback.removeAttribute('aria-disabled');
-      fallback.removeAttribute('tabindex');
-      fallback.setAttribute('aria-label', `Stream ${labelText} im aktuellen Tab öffnen`);
-      applyWatchButtonLink(link, index);
-    };
-
-    streamingLinks.forEach((link, index) => {
-      const item = document.createElement('li');
-
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.classList.add('stream-source');
-      button.setAttribute('aria-pressed', 'false');
-      button.dataset.streamIndex = String(index);
-
-      const name = document.createElement('span');
-      name.classList.add('stream-source__name');
-      name.textContent = link?.source_name || `Stream ${index + 1}`;
-
-      const meta = document.createElement('span');
-      meta.classList.add('stream-source__meta');
-      meta.textContent = getStreamMeta(link);
-
-      const cta = document.createElement('span');
-      cta.classList.add('stream-source__cta');
-      cta.textContent = 'Zum Player';
-
-      button.appendChild(name);
-      button.appendChild(meta);
-      button.appendChild(cta);
-
-      button.addEventListener('click', () => {
-        updateSelection(index);
-      });
-
-      item.appendChild(button);
-      list.appendChild(item);
-      sourceButtons.push(button);
-    });
-
-    sources.appendChild(sourcesHead);
-    sources.appendChild(list);
-    sidebar.appendChild(sources);
-
-    area.appendChild(primary);
-    area.appendChild(sidebar);
-
-    detailStreaming.appendChild(area);
-
-    updateSelection(0);
+    }
   } else {
-    const empty = document.createElement('div');
-    empty.classList.add('stream-area__empty');
-
-    const emptyTitle = document.createElement('strong');
-    emptyTitle.textContent = 'Keine Streams verfügbar.';
-
-    const emptyText = document.createElement('span');
-    emptyText.textContent = 'Sobald neue Quellen gefunden werden, erscheinen sie automatisch hier.';
-
-    empty.appendChild(emptyTitle);
-    empty.appendChild(emptyText);
-    detailStreaming.appendChild(empty);
-    applyWatchButtonLink(null);
+    if (detailEpisodesSection) {
+      detailEpisodesSection.hidden = true;
+    }
+    renderStreamingLinks(item?.streaming_links || []);
   }
 
-  const trailer = movie.trailer;
+  const trailer = item?.trailer;
   if (trailer?.site === 'YouTube' && trailer?.key) {
     currentTrailer = trailer;
   } else {
@@ -2798,9 +3169,9 @@ function populateDetail(movie) {
     trailerButton.disabled = !currentTrailer;
   }
 
-  if (allMoviesLoaded) {
+  if (!isSeries && allMoviesLoaded) {
     if (currentMovieId != null) {
-      const index = allMovies.findIndex((item) => item.id === currentMovieId);
+      const index = allMovies.findIndex((entry) => entry.id === currentMovieId);
       if (index >= 0) {
         const targetPage = Math.floor(index / ALL_MOVIES_PAGE_SIZE) + 1;
         if (targetPage !== allMoviesPage) {
@@ -2815,9 +3186,12 @@ function populateDetail(movie) {
     } else {
       updateAllMoviesActive(null);
     }
+  } else if (!isSeries) {
+    updateAllMoviesActive(currentMovieId);
+  } else {
+    updateAllMoviesActive(null);
   }
 }
-
 searchOverlayClose?.addEventListener('click', () => {
   hideSearchOverlay();
   if (topbarSearchInput) {
