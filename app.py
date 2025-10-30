@@ -13,6 +13,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case, func, or_
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import selectinload
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
@@ -43,6 +44,11 @@ SCRAPER_THREADS: dict[str, Thread] = {}
 
 MOVIE_RUNTIME_CACHE: dict[int, Optional[int]] = {}
 MOVIE_RUNTIME_CACHE_LOCK = Lock()
+
+TMDB_GENRE_CACHE: dict[int, str] = {}
+TMDB_GENRE_CACHE_LOCK = Lock()
+TMDB_GENRE_CACHE_LAST_FETCH: float = 0.0
+TMDB_GENRE_CACHE_TTL_SECONDS = 12 * 60 * 60
 
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/"
 
@@ -126,6 +132,167 @@ def _parse_favorite_genres(raw_value: Optional[str]) -> list[str]:
 
 def _serialize_favorite_genres(genres: list[str]) -> str:
     return ", ".join(sorted({genre.strip() for genre in genres if genre.strip()}))
+
+
+def _normalize_genre_name(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    stripped = str(name).strip()
+    return stripped or None
+
+
+def fetch_tmdb_genre_map(force: bool = False) -> dict[int, str]:
+    """Return a cached mapping of TMDB genre IDs to names."""
+
+    global TMDB_GENRE_CACHE_LAST_FETCH
+    now = time.time()
+    with TMDB_GENRE_CACHE_LOCK:
+        if (
+            TMDB_GENRE_CACHE
+            and not force
+            and (now - TMDB_GENRE_CACHE_LAST_FETCH) < TMDB_GENRE_CACHE_TTL_SECONDS
+        ):
+            return dict(TMDB_GENRE_CACHE)
+
+    api_key = get_tmdb_api_key()
+    if not api_key:
+        return {}
+
+    params = {"api_key": api_key, "language": "de-DE"}
+    try:
+        response = requests.get(
+            "https://api.themoviedb.org/3/genre/movie/list", params=params, timeout=20
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:  # pragma: no cover - network
+        app.logger.warning("TMDB genre list request failed: %s", exc)
+        with TMDB_GENRE_CACHE_LOCK:
+            if TMDB_GENRE_CACHE:
+                return dict(TMDB_GENRE_CACHE)
+        return {}
+
+    payload = response.json()
+    genres_payload = payload.get("genres") if isinstance(payload, dict) else None
+    mapping: dict[int, str] = {}
+    if isinstance(genres_payload, list):
+        for entry in genres_payload:
+            try:
+                tmdb_id = int(entry.get("id"))
+            except (TypeError, ValueError):
+                continue
+            name = _normalize_genre_name(entry.get("name"))
+            if tmdb_id <= 0 or not name:
+                continue
+            mapping[tmdb_id] = name
+
+    with TMDB_GENRE_CACHE_LOCK:
+        TMDB_GENRE_CACHE.clear()
+        TMDB_GENRE_CACHE.update(mapping)
+        TMDB_GENRE_CACHE_LAST_FETCH = now
+
+    return dict(mapping)
+
+
+def _extract_tmdb_genre_entries(tmdb_data: Optional[dict]) -> list[tuple[Optional[int], Optional[str]]]:
+    if not isinstance(tmdb_data, dict):
+        return []
+
+    entries: list[tuple[Optional[int], Optional[str]]] = []
+    genres_payload = tmdb_data.get("genres")
+    if isinstance(genres_payload, list):
+        for entry in genres_payload:
+            tmdb_id: Optional[int] = None
+            name: Optional[str] = None
+            if isinstance(entry, dict):
+                try:
+                    tmdb_id_value = entry.get("id")
+                    tmdb_id = int(tmdb_id_value) if tmdb_id_value is not None else None
+                except (TypeError, ValueError):
+                    tmdb_id = None
+                name = _normalize_genre_name(entry.get("name"))
+            elif isinstance(entry, str):
+                name = _normalize_genre_name(entry)
+            elif entry is not None:
+                try:
+                    tmdb_id = int(entry)
+                except (TypeError, ValueError):
+                    tmdb_id = None
+            entries.append((tmdb_id, name))
+
+    genre_ids_payload = tmdb_data.get("genre_ids")
+    if isinstance(genre_ids_payload, list):
+        for entry in genre_ids_payload:
+            try:
+                tmdb_id = int(entry)
+            except (TypeError, ValueError):
+                continue
+            entries.append((tmdb_id, None))
+
+    return entries
+
+
+def _update_movie_genres_from_tmdb(movie: "Movie", tmdb_data: Optional[dict]) -> None:
+    if movie is None or not isinstance(tmdb_data, dict):
+        return
+
+    genre_entries = _extract_tmdb_genre_entries(tmdb_data)
+    if not genre_entries:
+        return
+
+    needs_mapping = any(
+        tmdb_id and not _normalize_genre_name(name)
+        for tmdb_id, name in genre_entries
+    )
+    genre_map = fetch_tmdb_genre_map() if needs_mapping else {}
+
+    new_genres: list[Genre] = []
+    seen: set[tuple[Optional[int], Optional[str]]] = set()
+
+    for tmdb_id_raw, name_raw in genre_entries:
+        tmdb_id: Optional[int] = None
+        if tmdb_id_raw is not None:
+            try:
+                tmdb_id_candidate = int(tmdb_id_raw)
+            except (TypeError, ValueError):
+                tmdb_id_candidate = None
+            if tmdb_id_candidate and tmdb_id_candidate > 0:
+                tmdb_id = tmdb_id_candidate
+
+        normalized_name = _normalize_genre_name(name_raw)
+        if normalized_name is None and tmdb_id is not None:
+            normalized_name = genre_map.get(tmdb_id)
+        if normalized_name is None:
+            continue
+
+        dedupe_key = (tmdb_id, normalized_name.lower())
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        genre: Optional[Genre] = None
+        if tmdb_id is not None:
+            genre = Genre.query.filter_by(tmdb_id=tmdb_id).first()
+        if genre is None:
+            genre = (
+                Genre.query.filter(func.lower(Genre.name) == normalized_name.lower())
+                .first()
+            )
+        if genre is None:
+            genre = Genre(tmdb_id=tmdb_id, name=normalized_name)
+        else:
+            if tmdb_id is not None and genre.tmdb_id != tmdb_id:
+                genre.tmdb_id = tmdb_id
+            if genre.name != normalized_name:
+                genre.name = normalized_name
+
+        db.session.add(genre)
+        new_genres.append(genre)
+
+    if not new_genres:
+        return
+
+    db.session.add(movie)
+    movie.genres = new_genres
 
 
 def get_or_create_user_profile_model() -> "UserProfile":
@@ -397,6 +564,34 @@ def inject_user_profile() -> dict[str, object]:
     return {"user_profile": get_user_profile()}
 
 
+movie_genres = db.Table(
+    "movie_genres",
+    db.Column("movie_id", db.Integer, db.ForeignKey("movies.id"), primary_key=True),
+    db.Column("genre_id", db.Integer, db.ForeignKey("genres.id"), primary_key=True),
+)
+
+
+class Genre(db.Model):
+    __tablename__ = "genres"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tmdb_id = db.Column(db.Integer, unique=True)
+    name = db.Column(db.String(120), unique=True, nullable=False)
+
+    movies = db.relationship(
+        "Movie",
+        secondary=movie_genres,
+        back_populates="genres",
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "tmdb_id": self.tmdb_id,
+            "name": self.name,
+        }
+
+
 class Movie(db.Model):
     __tablename__ = "movies"
 
@@ -416,6 +611,12 @@ class Movie(db.Model):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    genres = db.relationship(
+        "Genre",
+        secondary=movie_genres,
+        back_populates="movies",
+        lazy="selectin",
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -429,6 +630,7 @@ class Movie(db.Model):
             "rating": self.rating,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "streaming_links": [link.to_dict() for link in self.streaming_links],
+            "genres": [genre.name for genre in self.genres if genre.name],
         }
 
 
@@ -923,7 +1125,14 @@ def fetch_tmdb_details(tmdb_id: int) -> dict:
 
     return {
         "runtime": payload.get("runtime"),
-        "genres": [genre.get("name") for genre in payload.get("genres", []) if genre.get("name")],
+        "genres": [
+            {
+                "id": genre.get("id"),
+                "name": genre.get("name"),
+            }
+            for genre in payload.get("genres", [])
+            if genre.get("name")
+        ],
         "tagline": payload.get("tagline"),
         "cast": cast_details,
         "trailer": trailer_payload,
@@ -1258,6 +1467,7 @@ def _apply_tmdb_metadata(movie: Movie, tmdb_data: dict) -> None:
     movie.backdrop_path = tmdb_data.get("backdrop_path")
     movie.release_date = tmdb_data.get("release_date")
     movie.rating = tmdb_data.get("vote_average")
+    _update_movie_genres_from_tmdb(movie, tmdb_data)
 
 
 def _apply_tmdb_series_metadata(series: Series, tmdb_data: dict) -> None:
@@ -1287,6 +1497,7 @@ def upsert_movies(tmdb_movies: List[dict]) -> List[Movie]:
         movie.backdrop_path = entry.get("backdrop_path")
         movie.release_date = entry.get("release_date")
         movie.rating = entry.get("vote_average")
+        _update_movie_genres_from_tmdb(movie, entry)
         db.session.add(movie)
         stored_movies.append(movie)
     db.session.commit()
@@ -2322,22 +2533,49 @@ def _extract_start_pages(payload: dict) -> tuple[dict[str, int], dict[str, str]]
     return start_pages, errors
 
 
+def fetch_movie_genre_stats(limit: Optional[int] = None) -> list[dict[str, object]]:
+    valid_filter = movie_has_valid_streaming_link()
+    query = (
+        db.session.query(Genre, func.count(Movie.id).label("movie_count"))
+        .join(movie_genres, Genre.id == movie_genres.c.genre_id)
+        .join(Movie, Movie.id == movie_genres.c.movie_id)
+        .filter(valid_filter)
+        .group_by(Genre.id)
+        .order_by(func.count(Movie.id).desc(), Genre.name.asc())
+    )
+    if limit is not None:
+        query = query.limit(limit)
+
+    results: list[dict[str, object]] = []
+    for genre, movie_count in query:
+        results.append(
+            {
+                "id": genre.id,
+                "tmdb_id": genre.tmdb_id,
+                "name": genre.name,
+                "movie_count": int(movie_count or 0),
+            }
+        )
+    return results
+
+
 def build_library_context() -> dict:
     valid_filter = movie_has_valid_streaming_link()
+    base_movie_query = Movie.query.options(selectinload(Movie.genres)).filter(valid_filter)
     popular_movies = (
-        Movie.query.filter(valid_filter)
+        base_movie_query
         .order_by(Movie.rating.desc().nullslast())
         .limit(20)
         .all()
     )
     recent_movies = (
-        Movie.query.filter(valid_filter)
+        base_movie_query
         .order_by(Movie.created_at.desc())
         .limit(20)
         .all()
     )
     linked_movies = (
-        Movie.query.filter(valid_filter)
+        base_movie_query
         .order_by(Movie.title.asc())
         .limit(20)
         .all()
@@ -2411,11 +2649,11 @@ def build_library_context() -> dict:
             order_whens = [(tmdb_id, position) for tmdb_id, position in order_mapping.items()]
             order_case = case(*order_whens, value=Movie.tmdb_id)
             now_playing_movies = (
-                Movie.query.filter(valid_filter, Movie.tmdb_id.in_(tmdb_ids))
-                .order_by(order_case)
-                .limit(20)
-                .all()
-            )
+        base_movie_query.filter(Movie.tmdb_id.in_(tmdb_ids))
+        .order_by(order_case)
+        .limit(20)
+        .all()
+    )
             now_playing_movies.sort(key=lambda movie: order_mapping.get(movie.tmdb_id, len(order_mapping)))
 
     if now_playing_movies:
@@ -2433,6 +2671,7 @@ def build_library_context() -> dict:
         "hero_movies": hero_movies,
         "now_playing_movies": now_playing_movies,
         "movie_library_stats": movie_library_stats,
+        "movie_genres": fetch_movie_genre_stats(),
     }
 
 
@@ -2538,6 +2777,13 @@ def filme_all():
     else:
         highlight_image = None
 
+    movie_genres = fetch_movie_genre_stats()
+    raw_selected_genre = (request.args.get("genre") or "").strip()
+    selected_genre = None
+    if raw_selected_genre:
+        lookup = {genre["name"].lower(): genre["name"] for genre in movie_genres}
+        selected_genre = lookup.get(raw_selected_genre.lower())
+
     return render_template(
         "filme_all.html",
         active_page="filme",
@@ -2551,6 +2797,8 @@ def filme_all():
         latest_movie_added=latest_movie_added,
         highlight_movie=highlight_movie,
         highlight_image=highlight_image,
+        movie_genres=movie_genres,
+        selected_genre=selected_genre,
     )
 
 
@@ -2615,7 +2863,11 @@ def settings_view():
 @app.route("/api/movies")
 def api_movies():
     movies = (
-        Movie.query.filter(movie_has_valid_streaming_link())
+        Movie.query.options(
+            selectinload(Movie.genres),
+            selectinload(Movie.streaming_links),
+        )
+        .filter(movie_has_valid_streaming_link())
         .order_by(Movie.rating.desc().nullslast())
         .all()
     )
@@ -2737,6 +2989,51 @@ def api_movie_detail(movie_id: int):
     movie = Movie.query.get_or_404(movie_id)
     tmdb_details = fetch_tmdb_details(movie.tmdb_id)
 
+    if tmdb_details:
+        _update_movie_genres_from_tmdb(movie, tmdb_details)
+
+    stored_genres = [
+        {
+            "id": genre.tmdb_id,
+            "name": genre.name,
+        }
+        for genre in movie.genres
+        if genre.name
+    ]
+
+    detail_genres_payload = []
+    if isinstance(tmdb_details, dict):
+        raw_genres = tmdb_details.get("genres")
+        if isinstance(raw_genres, list):
+            detail_genres_payload = [
+                entry
+                for entry in raw_genres
+                if isinstance(entry, dict) and _normalize_genre_name(entry.get("name"))
+            ]
+
+    combined_genres: list[dict[str, Optional[str]]] = []
+    seen_genres: set[tuple[Optional[int], str]] = set()
+
+    def _append_genre(entry: dict) -> None:
+        name = _normalize_genre_name(entry.get("name"))
+        tmdb_id_value = entry.get("id")
+        try:
+            tmdb_id = int(tmdb_id_value) if tmdb_id_value is not None else None
+        except (TypeError, ValueError):
+            tmdb_id = None
+        if not name:
+            return
+        key = (tmdb_id, name.lower())
+        if key in seen_genres:
+            return
+        seen_genres.add(key)
+        combined_genres.append({"id": tmdb_id, "name": name})
+
+    for entry in detail_genres_payload:
+        _append_genre(entry)
+    for entry in stored_genres:
+        _append_genre(entry)
+
     poster_url = build_tmdb_image(movie.poster_path)
     backdrop_url = build_tmdb_image(movie.backdrop_path, "w1280")
 
@@ -2749,12 +3046,14 @@ def api_movie_detail(movie_id: int):
         "release_date": movie.release_date,
         "rating": movie.rating,
         "runtime": tmdb_details.get("runtime"),
-        "genres": tmdb_details.get("genres", []),
+        "genres": combined_genres,
         "tagline": tmdb_details.get("tagline"),
         "cast": tmdb_details.get("cast", []),
         "streaming_links": [link.to_dict() for link in movie.streaming_links],
         "trailer": tmdb_details.get("trailer"),
     }
+
+    db.session.commit()
 
     return jsonify({"success": True, "movie": movie_payload})
 

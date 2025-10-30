@@ -77,7 +77,7 @@
     </div>
     <div class="collection-toolbar__actions">
         <div class="collection-toolbar__meta">
-            <span class="collection-toolbar__count">{{ total_movies }} Titel verfügbar</span>
+            <span class="collection-toolbar__count" data-role="collectionCount">{{ total_movies }} Titel verfügbar</span>
         </div>
         <div class="collection-toolbar__sort" role="group" aria-label="Sortieren nach">
             <span class="collection-toolbar__sort-label">Sortieren nach:</span>
@@ -100,6 +100,33 @@
             </div>
         </div>
     </div>
+    {% if movie_genres %}
+    {% set active_genre = selected_genre or 'all' %}
+    <div class="collection-toolbar__genres" data-role="genreFilter" data-all-label="Alle Genres">
+        <span class="collection-toolbar__genres-label">Genre:</span>
+        <button
+            type="button"
+            class="chip chip--ghost{% if active_genre == 'all' %} is-active{% endif %}"
+            data-genre-filter="all"
+            data-genre-key="all"
+            data-genre-label="Alle Genres"
+        >
+            <span>Alle Genres</span>
+        </button>
+        {% for genre in movie_genres %}
+        <button
+            type="button"
+            class="chip chip--ghost{% if active_genre|lower == genre.name|lower %} is-active{% endif %}"
+            data-genre-filter="{{ genre.name }}"
+            data-genre-key="{{ genre.name|lower }}"
+            data-genre-label="{{ genre.name }}"
+        >
+            <span>{{ genre.name }}</span>
+            <span class="chip__count">{{ genre.movie_count }}</span>
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
 </section>
 
 <section class="surface collection-all">
@@ -118,7 +145,11 @@
             </button>
         </div>
     </header>
-    <div id="detailAllMovies" class="detail-grid collection-all__grid"></div>
+    <div
+        id="detailAllMovies"
+        class="detail-grid collection-all__grid"
+        data-default-genre="{{ selected_genre or '' }}"
+    ></div>
     <div class="detail-pagination detail-pagination--static">
         <button type="button" class="rail-button" aria-label="Vorherige Seite" data-role="detailAllPrev">
             <span class="material-symbols-outlined">chevron_left</span>

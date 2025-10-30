@@ -1286,6 +1286,30 @@ body.showing-search {
     color: var(--text-primary);
 }
 
+.chip__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    margin-left: 0.45rem;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: rgba(9, 14, 25, 0.55);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.chip--ghost .chip__count {
+    background: rgba(88, 166, 255, 0.22);
+    color: var(--text-primary);
+}
+
+.chip--light .chip__count {
+    background: rgba(9, 14, 25, 0.35);
+}
+
 .hero {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
@@ -2096,6 +2120,25 @@ body.showing-search {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
+}
+
+.film-hero__genres {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 0.5rem;
+}
+
+.film-hero__genres-label {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.film-hero__genres-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 .film-hero__metrics {
@@ -4228,6 +4271,22 @@ body.showing-detail {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+}
+
+.collection-toolbar__genres {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding-top: 0.25rem;
+}
+
+.collection-toolbar__genres-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
 
 .collection-all__head {

@@ -30,6 +30,11 @@ const detailAllPrevButtons = Array.from(
 const detailAllNextButtons = Array.from(
   document.querySelectorAll('[data-role="detailAllNext"]')
 );
+const genreFilterContainer = document.querySelector('[data-role="genreFilter"]');
+const genreFilterButtons = Array.from(
+  document.querySelectorAll('[data-genre-filter]')
+);
+const collectionCountLabel = document.querySelector('[data-role="collectionCount"]');
 const trailerModal = document.getElementById('trailerModal');
 const trailerModalFrame = document.getElementById('trailerModalFrame');
 const trailerModalTitle = document.getElementById('trailerModalTitle');
@@ -153,6 +158,9 @@ let allMoviesLoading = false;
 let allMoviesSorting = false;
 let allMoviesSort = 'popular';
 let allMoviesDirection = 'desc';
+let allMoviesGenreFilterKey = 'all';
+let allMoviesGenreFilterValue = 'all';
+let allMoviesGenreFilterLabel = genreFilterContainer?.dataset?.allLabel || 'Alle Genres';
 let currentScraperStatuses = {};
 let scraperStatusTimeout = null;
 let searchAbortController = null;
@@ -2268,8 +2276,172 @@ function updateAllMoviesActive(movieId) {
   });
 }
 
+function normalizeGenreKey(value) {
+  if (value == null) {
+    return '';
+  }
+  return String(value).trim().toLowerCase();
+}
+
+function findGenreButtonByKey(key) {
+  if (!genreFilterButtons.length) {
+    return null;
+  }
+  const normalizedKey = key ? (key === 'all' ? 'all' : normalizeGenreKey(key)) : '';
+  const targetKey = normalizedKey || 'all';
+  return (
+    genreFilterButtons.find((button) => {
+      const buttonKey = normalizeGenreKey(
+        button.dataset.genreKey || button.dataset.genreFilter || button.textContent,
+      );
+      const resolvedButtonKey = buttonKey || 'all';
+      return resolvedButtonKey === targetKey;
+    }) || null
+  );
+}
+
+function updateGenreQueryParameter(value) {
+  if (typeof window === 'undefined' || !window.history?.replaceState) {
+    return;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const normalizedValue = typeof value === 'string' ? value.trim() : '';
+  if (!normalizedValue || normalizedValue === 'all') {
+    params.delete('genre');
+  } else {
+    params.set('genre', normalizedValue);
+  }
+  const queryString = params.toString();
+  const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}${window.location.hash}`;
+  window.history.replaceState({}, '', newUrl);
+}
+
+function applyGenreFilterState({ key, value, label, fromUser } = {}) {
+  const normalizedKeyRaw = key ? normalizeGenreKey(key) : '';
+  const normalizedKey = normalizedKeyRaw && normalizedKeyRaw !== 'all' ? normalizedKeyRaw : 'all';
+  const targetButton = findGenreButtonByKey(normalizedKey);
+  const resolvedLabel =
+    label ||
+    targetButton?.dataset.genreLabel ||
+    (normalizedKey === 'all'
+      ? genreFilterContainer?.dataset?.allLabel || 'Alle Genres'
+      : (targetButton?.textContent || value || '').trim());
+  const resolvedValue =
+    normalizedKey === 'all'
+      ? 'all'
+      : value || targetButton?.dataset.genreFilter || targetButton?.dataset.genreLabel || targetButton?.textContent?.trim() || '';
+
+  allMoviesGenreFilterKey = normalizedKey;
+  allMoviesGenreFilterValue = resolvedValue;
+  allMoviesGenreFilterLabel =
+    resolvedLabel || (normalizedKey === 'all' ? genreFilterContainer?.dataset?.allLabel || 'Alle Genres' : resolvedValue);
+
+  genreFilterButtons.forEach((button) => {
+    const buttonKey = normalizeGenreKey(
+      button.dataset.genreKey || button.dataset.genreFilter || button.textContent,
+    );
+    const resolvedButtonKey = buttonKey || 'all';
+    button.classList.toggle('is-active', resolvedButtonKey === normalizedKey);
+  });
+
+  if (fromUser && typeof resolvedValue === 'string') {
+    updateGenreQueryParameter(resolvedValue);
+  }
+
+  applyAllMoviesSort({ resetPage: true });
+}
+
+function setAllMoviesGenreFilterFromButton(button, options = {}) {
+  if (!button) {
+    return;
+  }
+  const buttonKey = normalizeGenreKey(button.dataset.genreKey || button.dataset.genreFilter || button.textContent);
+  const buttonLabel = button.dataset.genreLabel || button.textContent?.trim() || '';
+  const buttonValue =
+    button.dataset.genreFilter || button.dataset.genreLabel || button.textContent?.trim() || '';
+  applyGenreFilterState({
+    key: buttonKey || 'all',
+    value: buttonValue,
+    label: buttonLabel,
+    fromUser: Boolean(options.fromUser),
+  });
+}
+
+function setAllMoviesGenreFilter(value, options = {}) {
+  const normalizedKeyRaw = value ? normalizeGenreKey(value) : '';
+  const targetButton = findGenreButtonByKey(normalizedKeyRaw);
+  if (targetButton) {
+    setAllMoviesGenreFilterFromButton(targetButton, options);
+    return;
+  }
+  const normalizedKey = normalizedKeyRaw && normalizedKeyRaw !== 'all' ? normalizedKeyRaw : 'all';
+  const resolvedValue = normalizedKey === 'all' ? 'all' : value || '';
+  const resolvedLabel =
+    options.label ||
+    (normalizedKey === 'all'
+      ? genreFilterContainer?.dataset?.allLabel || 'Alle Genres'
+      : (typeof value === 'string' && value.trim()) || resolvedValue);
+  applyGenreFilterState({
+    key: normalizedKey,
+    value: resolvedValue,
+    label: typeof resolvedLabel === 'string' ? resolvedLabel : resolvedValue,
+    fromUser: Boolean(options.fromUser),
+  });
+}
+
+function getFilteredMovies() {
+  if (!Array.isArray(allMovies) || !allMovies.length) {
+    return [];
+  }
+  if (allMoviesGenreFilterKey === 'all') {
+    return [...allMovies];
+  }
+  return allMovies.filter((movie) => {
+    const genres = Array.isArray(movie?.genres) ? movie.genres : [];
+    return genres.some((genre) => {
+      if (!genre) {
+        return false;
+      }
+      const genreName =
+        typeof genre === 'string'
+          ? genre
+          : typeof genre.name === 'string'
+          ? genre.name
+          : Array.isArray(genre)
+          ? genre[0]
+          : '';
+      return normalizeGenreKey(genreName) === allMoviesGenreFilterKey;
+    });
+  });
+}
+
+function updateCollectionCountLabel(movies) {
+  if (!collectionCountLabel) {
+    return;
+  }
+  if (allMoviesLoading) {
+    collectionCountLabel.textContent = 'Lädt…';
+    return;
+  }
+  if (allMoviesSorting) {
+    collectionCountLabel.textContent = 'Sortiert…';
+    return;
+  }
+  const total = Array.isArray(movies) ? movies.length : 0;
+  const noun = total === 1 ? 'Titel' : 'Titel';
+  if (allMoviesGenreFilterKey === 'all') {
+    collectionCountLabel.textContent = `${total} ${noun} verfügbar`;
+  } else {
+    const label = allMoviesGenreFilterLabel || 'Alle Genres';
+    collectionCountLabel.textContent = `${total} ${noun} im Genre ${label}`;
+  }
+}
+
 function getSortedMovies() {
-  return allMoviesSorted.length ? allMoviesSorted : allMovies;
+  if (allMoviesSorted.length) {
+    return allMoviesSorted;
+  }
+  return getFilteredMovies();
 }
 
 function getAllMoviesTotalPages() {
@@ -2412,12 +2584,14 @@ function compareAllMovies(a, b) {
 
 function renderAllMoviesPage() {
   if (!detailAllMoviesGrid) {
+    updateCollectionCountLabel([]);
     return;
   }
 
   detailAllMoviesGrid.innerHTML = '';
 
   if (allMoviesLoading || allMoviesSorting) {
+    updateCollectionCountLabel([]);
     const loading = document.createElement('p');
     loading.classList.add('empty');
     loading.textContent = allMoviesLoading
@@ -2429,6 +2603,7 @@ function renderAllMoviesPage() {
   }
 
   const movies = getSortedMovies();
+  updateCollectionCountLabel(movies);
 
   if (!movies.length) {
     const empty = document.createElement('p');
@@ -2556,7 +2731,16 @@ async function applyAllMoviesSort({ resetPage = false } = {}) {
     return;
   }
 
-  const movies = [...allMovies];
+  const movies = getFilteredMovies();
+
+  if (!movies.length) {
+    allMoviesSorted = [];
+    if (resetPage) {
+      allMoviesPage = 1;
+    }
+    renderAllMoviesPage();
+    return;
+  }
 
   if (allMoviesSort === 'runtime') {
     const missingRuntimeIds = movies
@@ -2891,6 +3075,29 @@ function showDetailLoadingState() {
   detailAllPageLabels.forEach((label) => {
     label.textContent = 'Lädt…';
   });
+}
+
+function initAllMoviesGenreFilter() {
+  if (!detailAllMoviesGrid) {
+    return;
+  }
+
+  const defaultGenre = detailAllMoviesGrid.dataset?.defaultGenre || '';
+
+  genreFilterButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      if (allMoviesLoading || allMoviesSorting) {
+        return;
+      }
+      setAllMoviesGenreFilterFromButton(button, { fromUser: true });
+    });
+  });
+
+  if (defaultGenre) {
+    setAllMoviesGenreFilter(defaultGenre, { fromUser: false });
+  } else {
+    setAllMoviesGenreFilter('all', { fromUser: false });
+  }
 }
 
 document.addEventListener('keydown', (event) => {
@@ -3334,6 +3541,7 @@ initSearch();
 bindButtons();
 initNavigation();
 bindContentCards();
+initAllMoviesGenreFilter();
 initAllMoviesSort();
 initMediaRails();
 initHero();
