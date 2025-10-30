@@ -70,43 +70,8 @@
                 <button class="icon-button" type="button" title="Benachrichtigungen">
                     <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
                 </button>
-                <div class="user-menu" data-user-menu>
-                    <button
-                        class="user-menu__trigger"
-                        type="button"
-                        aria-haspopup="true"
-                        aria-expanded="false"
-                        data-user-menu-toggle
-                    >
-                        <div class="avatar user-menu__avatar" aria-hidden="true">
-                            <span>ME</span>
-                        </div>
-                        <div class="user-menu__labels">
-                            <span class="user-menu__greeting">Hallo, Medusa</span>
-                            <span class="user-menu__summary" data-user-menu-summary>Noch nichts angesehen</span>
-                        </div>
-                        <span class="material-symbols-outlined user-menu__chevron" aria-hidden="true">expand_more</span>
-                    </button>
-                    <div class="user-menu__dropdown" data-user-menu-dropdown hidden>
-                        <header class="user-menu__header">
-                            <span class="chip chip--accent user-menu__chip">Profil</span>
-                            <h2 class="user-menu__title">Zuletzt angesehen</h2>
-                            <p class="user-menu__subtitle">Eine Übersicht deiner letzten Streams.</p>
-                        </header>
-                        <ul
-                            class="user-menu__history"
-                            data-user-history
-                            data-poster-placeholder="{{ url_for('static', filename='images/poster-placeholder.svg') }}"
-                        >
-                            <li class="user-menu__history-empty" data-user-history-empty>Noch nichts angesehen.</li>
-                        </ul>
-                        <footer class="user-menu__footer">
-                            <a href="{{ url_for('settings_view') }}" class="user-menu__settings">
-                                <span class="material-symbols-outlined" aria-hidden="true">settings</span>
-                                <span>Profil &amp; Einstellungen</span>
-                            </a>
-                        </footer>
-                    </div>
+                <div class="avatar" role="img" aria-label="Benutzerprofil">
+                    <span>ME</span>
                 </div>
             </div>
         </header>

@@ -52,14 +52,6 @@ const searchOverlayEmpty = document.getElementById('searchOverlayEmpty');
 const searchOverlayClose = document.getElementById('searchOverlayClose');
 const scraperStartAllButton = document.getElementById('scraperStartAll');
 const scraperPanels = Array.from(document.querySelectorAll('[data-scraper-panel]'));
-const userMenu = document.querySelector('[data-user-menu]');
-const userMenuToggle = userMenu?.querySelector('[data-user-menu-toggle]');
-const userMenuDropdown = userMenu?.querySelector('[data-user-menu-dropdown]');
-const userMenuSummary = userMenu?.querySelector('[data-user-menu-summary]');
-const userMenuHistoryList = userMenu?.querySelector('[data-user-history]');
-const userMenuHistoryEmpty = userMenuHistoryList?.querySelector('[data-user-history-empty]') || null;
-const userMenuPosterPlaceholder =
-  userMenuHistoryList?.dataset.posterPlaceholder || detailPoster?.dataset?.placeholder || '';
 const scraperControllers = new Map();
 const scraperControllersByProvider = new Map();
 
@@ -121,7 +113,6 @@ const titleCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: tr
 
 const STORAGE_KEYS = Object.freeze({
   allMoviesSort: 'medusa.allMovies.sortPreferences',
-  viewingHistory: 'medusa.profile.viewingHistory',
 });
 
 let changeSection = () => {};
@@ -158,9 +149,6 @@ let heroSlides = [];
 let heroActiveIndex = 0;
 let heroRotationTimeout = null;
 const allMoviesRuntimeCache = new Map();
-let viewingHistory = [];
-let userMenuOpen = false;
-const VIEWING_HISTORY_LIMIT = 8;
 
 detailSeasonSelect?.addEventListener('change', () => {
   const seasonNumber = Number(detailSeasonSelect.value);
@@ -212,271 +200,6 @@ function saveAllMoviesSortPreference(sort, direction) {
     console.warn('Konnte Sortierpräferenz nicht speichern.', error);
   }
 }
-
-function loadViewingHistory() {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return [];
-  }
-  try {
-    const rawValue = window.localStorage.getItem(STORAGE_KEYS.viewingHistory);
-    if (!rawValue) {
-      return [];
-    }
-    const parsed = JSON.parse(rawValue);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed
-      .map((entry) => {
-        if (!entry || typeof entry !== 'object') {
-          return null;
-        }
-        const type = entry.type === 'series' ? 'series' : 'movie';
-        const title = typeof entry.title === 'string' ? entry.title : '';
-        if (!title) {
-          return null;
-        }
-        const idValue =
-          entry.id != null && entry.id !== ''
-            ? String(entry.id)
-            : typeof entry.historyId === 'string' && entry.historyId
-            ? entry.historyId
-            : null;
-        const key = typeof entry.key === 'string' && entry.key ? entry.key : null;
-        return {
-          key: key || `${type}:${idValue || title.toLowerCase()}`,
-          id: idValue,
-          type,
-          title,
-          poster: typeof entry.poster === 'string' ? entry.poster : '',
-          year: typeof entry.year === 'string' ? entry.year : '',
-          timestamp: Number(entry.timestamp) || null,
-        };
-      })
-      .filter((entry) => entry && entry.title)
-      .slice(0, VIEWING_HISTORY_LIMIT);
-  } catch (error) {
-    console.warn('Konnte Verlauf nicht laden.', error);
-  }
-  return [];
-}
-
-function saveViewingHistory(items) {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return;
-  }
-  try {
-    const payload = JSON.stringify(items.slice(0, VIEWING_HISTORY_LIMIT));
-    window.localStorage.setItem(STORAGE_KEYS.viewingHistory, payload);
-  } catch (error) {
-    console.warn('Konnte Verlauf nicht speichern.', error);
-  }
-}
-
-function formatHistoryTimestamp(timestamp) {
-  if (!timestamp) {
-    return '';
-  }
-  const date = new Date(Number(timestamp));
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  try {
-    return date.toLocaleDateString('de-DE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  } catch (_) {
-    return '';
-  }
-}
-
-function renderViewingHistory() {
-  if (!userMenuHistoryList) {
-    return;
-  }
-  const entries = viewingHistory.slice(0, VIEWING_HISTORY_LIMIT);
-  userMenuHistoryList.querySelectorAll('[data-user-history-entry]').forEach((node) => node.remove());
-  if (!entries.length) {
-    if (userMenuHistoryEmpty) {
-      userMenuHistoryEmpty.hidden = false;
-    }
-  } else {
-    if (userMenuHistoryEmpty) {
-      userMenuHistoryEmpty.hidden = true;
-    }
-    entries.forEach((entry) => {
-      const listItem = document.createElement('li');
-      listItem.classList.add('user-menu__history-item');
-      listItem.dataset.userHistoryEntry = 'true';
-
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.classList.add('user-menu__history-button');
-      button.dataset.userHistoryItem = 'true';
-      if (entry.id) {
-        button.dataset.historyId = entry.id;
-      }
-      button.dataset.historyType = entry.type;
-
-      const poster = document.createElement('img');
-      poster.classList.add('user-menu__history-poster');
-      poster.alt = '';
-      poster.loading = 'lazy';
-      poster.src = entry.poster || userMenuPosterPlaceholder || '';
-
-      const content = document.createElement('div');
-      content.classList.add('user-menu__history-content');
-
-      const title = document.createElement('p');
-      title.classList.add('user-menu__history-title');
-      title.textContent = entry.title;
-
-      const meta = document.createElement('p');
-      meta.classList.add('user-menu__history-meta');
-      const metaItems = [entry.type === 'series' ? 'Serie' : 'Film'];
-      if (entry.year) {
-        metaItems.push(entry.year);
-      }
-      const formattedDate = formatHistoryTimestamp(entry.timestamp);
-      if (formattedDate) {
-        metaItems.push(`angesehen ${formattedDate}`);
-      }
-      metaItems.forEach((value) => {
-        const span = document.createElement('span');
-        span.textContent = value;
-        meta.appendChild(span);
-      });
-
-      content.appendChild(title);
-      content.appendChild(meta);
-
-      button.appendChild(poster);
-      button.appendChild(content);
-      listItem.appendChild(button);
-      userMenuHistoryList.appendChild(listItem);
-    });
-  }
-
-  if (userMenuSummary) {
-    if (entries.length) {
-      userMenuSummary.textContent = `Zuletzt angesehen: ${entries[0].title}`;
-    } else {
-      userMenuSummary.textContent = 'Noch nichts angesehen';
-    }
-  }
-}
-
-function recordViewingHistory(item) {
-  if (!item) {
-    return;
-  }
-  const type = (item?.content_type || 'movie').toLowerCase() === 'series' ? 'series' : 'movie';
-  const title = (item?.title || item?.name || '').trim();
-  if (!title) {
-    return;
-  }
-  const idValue =
-    item?.id != null && item.id !== ''
-      ? String(item.id)
-      : item?.tmdb_id != null
-      ? String(item.tmdb_id)
-      : item?.slug || item?.imdb_id || null;
-  const keyBase = idValue || title.toLowerCase();
-  const entry = {
-    key: `${type}:${keyBase}`,
-    id: idValue || keyBase,
-    type,
-    title,
-    poster: getMoviePosterUrl(item) || userMenuPosterPlaceholder || '',
-    year: (() => {
-      const release = item?.release_date || item?.first_air_date || '';
-      return release && typeof release === 'string' ? release.split('-')[0] || '' : '';
-    })(),
-    timestamp: Date.now(),
-  };
-
-  viewingHistory = viewingHistory.filter((existing) => existing?.key !== entry.key);
-  viewingHistory.unshift(entry);
-  if (viewingHistory.length > VIEWING_HISTORY_LIMIT) {
-    viewingHistory = viewingHistory.slice(0, VIEWING_HISTORY_LIMIT);
-  }
-  saveViewingHistory(viewingHistory);
-  renderViewingHistory();
-}
-
-function setUserMenuOpen(open) {
-  userMenuOpen = Boolean(open);
-  if (!userMenu || !userMenuDropdown || !userMenuToggle) {
-    return;
-  }
-  userMenu.classList.toggle('is-open', userMenuOpen);
-  userMenuDropdown.hidden = !userMenuOpen;
-  userMenuToggle.setAttribute('aria-expanded', userMenuOpen ? 'true' : 'false');
-}
-
-function initializeUserMenu() {
-  viewingHistory = loadViewingHistory();
-  renderViewingHistory();
-
-  if (!userMenu) {
-    return;
-  }
-
-  userMenuToggle?.addEventListener('click', (event) => {
-    event.preventDefault();
-    setUserMenuOpen(!userMenuOpen);
-  });
-
-  document.addEventListener('click', (event) => {
-    if (!userMenuOpen) {
-      return;
-    }
-    if (userMenu.contains(event.target)) {
-      return;
-    }
-    setUserMenuOpen(false);
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || !userMenuOpen) {
-      return;
-    }
-    setUserMenuOpen(false);
-    userMenuToggle?.focus();
-  });
-
-  userMenuHistoryList?.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-user-history-item]');
-    if (!button) {
-      return;
-    }
-    const historyId = button.dataset.historyId;
-    const historyType = button.dataset.historyType;
-    if (!historyId) {
-      return;
-    }
-    setUserMenuOpen(false);
-    if (historyType === 'series') {
-      openSeriesDetail(historyId);
-    } else {
-      openMovieDetail(historyId);
-    }
-  });
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('storage', (event) => {
-      if (event.key !== STORAGE_KEYS.viewingHistory) {
-        return;
-      }
-      viewingHistory = loadViewingHistory();
-      renderViewingHistory();
-    });
-  }
-}
-
-initializeUserMenu();
 
 const SANDBOX_ATTRIBUTE_VALUE =
   'allow-same-origin allow-scripts allow-forms allow-pointer-lock allow-fullscreen';
@@ -3178,8 +2901,6 @@ function populateDetail(item) {
 
   currentMovieId = isSeries ? null : item?.id ?? null;
   currentMovieTitle = item?.title || item?.name || 'Unbekannter Titel';
-
-  recordViewingHistory(item);
 
   if (detailLabel) {
     detailLabel.textContent = isSeries ? 'Serie' : 'Film';
