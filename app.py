@@ -38,6 +38,139 @@ SCRAPER_THREADS: dict[str, Thread] = {}
 MOVIE_RUNTIME_CACHE: dict[int, Optional[int]] = {}
 MOVIE_RUNTIME_CACHE_LOCK = Lock()
 
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/"
+
+
+DEFAULT_USER_PROFILE: dict[str, object] = {
+    "name": "Mira Engel",
+    "role": "Streaming Enthusiast",
+    "avatar_initials": "ME",
+    "email": "mira.engel@medusa.app",
+    "location": "Berlin, Deutschland",
+    "membership_since": datetime(2022, 5, 18),
+    "bio": (
+        "Medusa begleitet mich durch jede Filmnacht. Ich entdecke gerne neue Serien und "
+        "teile Empfehlungen mit Freunden – immer auf der Suche nach dem nächsten Highlight."
+    ),
+    "favorite_genres": ["Science-Fiction", "Drama", "Thriller"],
+}
+
+
+def build_image_url(path: Optional[str], size: str = "w185") -> Optional[str]:
+    if not path:
+        return None
+    normalized = path.lstrip("/")
+    return f"{TMDB_IMAGE_BASE}{size}{normalized}"
+
+
+def format_timestamp(value: Optional[datetime]) -> str:
+    if not value:
+        return "Unbekannt"
+    return value.strftime("%d.%m.%Y %H:%M")
+
+
+def fetch_recently_viewed(limit: int = 6) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+
+    try:
+        recent_movies = (
+            Movie.query.order_by(Movie.created_at.desc().nullslast()).limit(limit).all()
+        )
+        for movie in recent_movies:
+            viewed_at = movie.created_at or datetime.min
+            items.append(
+                {
+                    "id": movie.id,
+                    "title": movie.title,
+                    "category": "Film",
+                    "overview": movie.overview or "",
+                    "poster_url": build_image_url(movie.poster_path, "w154"),
+                    "backdrop_url": build_image_url(movie.backdrop_path, "w300"),
+                    "viewed_at": viewed_at,
+                    "viewed_at_display": format_timestamp(movie.created_at),
+                }
+            )
+
+        recent_episodes = (
+            SeriesEpisode.query.order_by(SeriesEpisode.updated_at.desc().nullslast())
+            .limit(limit)
+            .all()
+        )
+        for episode in recent_episodes:
+            viewed_at = episode.updated_at or datetime.min
+            series_title = (
+                episode.season.series.name
+                if episode.season and episode.season.series
+                else None
+            )
+            season_number = (
+                episode.season.season_number if episode.season else None
+            )
+            items.append(
+                {
+                    "id": episode.id,
+                    "title": episode.name or f"Episode {episode.episode_number}",
+                    "category": "Serie",
+                    "overview": episode.overview or "",
+                    "poster_url": build_image_url(episode.still_path, "w185"),
+                    "backdrop_url": build_image_url(episode.still_path, "w300"),
+                    "parent_title": series_title,
+                    "season_number": season_number,
+                    "episode_number": episode.episode_number,
+                    "viewed_at": viewed_at,
+                    "viewed_at_display": format_timestamp(episode.updated_at),
+                }
+            )
+    except Exception:
+        db.session.rollback()
+        return []
+
+    items.sort(
+        key=lambda item: item.get("viewed_at") or datetime.min,
+        reverse=True,
+    )
+    trimmed = items[:limit]
+    for entry in trimmed:
+        entry.setdefault("viewed_at_display", "Unbekannt")
+        entry.pop("viewed_at", None)
+    return trimmed
+
+
+def fetch_library_stats() -> dict[str, int]:
+    stats = {"movies": 0, "series": 0, "episodes": 0}
+    try:
+        stats["movies"] = db.session.query(func.count(Movie.id)).scalar() or 0
+        stats["series"] = db.session.query(func.count(Series.id)).scalar() or 0
+        stats["episodes"] = (
+            db.session.query(func.count(SeriesEpisode.id)).scalar() or 0
+        )
+    except Exception:
+        db.session.rollback()
+    return stats
+
+
+def get_user_profile() -> dict[str, object]:
+    profile: dict[str, object] = {
+        key: value
+        for key, value in DEFAULT_USER_PROFILE.items()
+        if key != "favorite_genres"
+    }
+    profile["favorite_genres"] = list(DEFAULT_USER_PROFILE.get("favorite_genres", []))
+    profile["recently_viewed"] = fetch_recently_viewed()
+    profile["library_stats"] = fetch_library_stats()
+    membership_since = profile.get("membership_since")
+    if isinstance(membership_since, datetime):
+        profile["membership_since_display"] = membership_since.strftime("%d.%m.%Y")
+    else:
+        profile["membership_since_display"] = membership_since or "Unbekannt"
+    profile["recent_count"] = len(profile["recently_viewed"])
+    return profile
+
+
+@app.context_processor
+def inject_user_profile() -> dict[str, object]:
+    return {"user_profile": get_user_profile()}
+
 
 class Movie(db.Model):
     __tablename__ = "movies"
@@ -1967,6 +2100,17 @@ def index():
         show_detail_panel=True,
         page_title="Medusa – Startseite",
         **context,
+    )
+
+
+@app.route("/profil")
+def profile_view():
+    profile = get_user_profile()
+    return render_template(
+        "profile.html",
+        active_page="profile",
+        page_title="Benutzerprofil",
+        user_profile=profile,
     )
 
 
