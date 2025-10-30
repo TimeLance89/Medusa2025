@@ -2,7 +2,7 @@ import os
 import re
 import time
 from collections import deque
-from datetime import datetime
+from datetime import date, datetime
 from threading import Lock, Thread
 from typing import List, Optional, Set, Tuple
 
@@ -41,21 +41,6 @@ MOVIE_RUNTIME_CACHE_LOCK = Lock()
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/"
 
 
-DEFAULT_USER_PROFILE: dict[str, object] = {
-    "name": "Mira Engel",
-    "role": "Streaming Enthusiast",
-    "avatar_initials": "ME",
-    "email": "mira.engel@medusa.app",
-    "location": "Berlin, Deutschland",
-    "membership_since": datetime(2022, 5, 18),
-    "bio": (
-        "Medusa begleitet mich durch jede Filmnacht. Ich entdecke gerne neue Serien und "
-        "teile Empfehlungen mit Freunden – immer auf der Suche nach dem nächsten Highlight."
-    ),
-    "favorite_genres": ["Science-Fiction", "Drama", "Thriller"],
-}
-
-
 def build_image_url(path: Optional[str], size: str = "w185") -> Optional[str]:
     if not path:
         return None
@@ -69,71 +54,97 @@ def format_timestamp(value: Optional[datetime]) -> str:
     return value.strftime("%d.%m.%Y %H:%M")
 
 
-def fetch_recently_viewed(limit: int = 6) -> list[dict[str, object]]:
-    items: list[dict[str, object]] = []
+def _compute_avatar_initials(name: Optional[str], email: Optional[str]) -> str:
+    if name:
+        parts = [part for part in re.split(r"\s+", name.strip()) if part]
+        if parts:
+            initials = "".join(part[0] for part in parts[:2]).upper()
+            if initials:
+                return initials
+    if email and "@" in email:
+        local_part = email.split("@", 1)[0]
+        if local_part:
+            return local_part[:2].upper()
+    return "--"
 
-    try:
-        recent_movies = (
-            Movie.query.order_by(Movie.created_at.desc().nullslast()).limit(limit).all()
-        )
-        for movie in recent_movies:
-            viewed_at = movie.created_at or datetime.min
-            items.append(
-                {
-                    "id": movie.id,
-                    "title": movie.title,
-                    "category": "Film",
-                    "overview": movie.overview or "",
-                    "poster_url": build_image_url(movie.poster_path, "w154"),
-                    "backdrop_url": build_image_url(movie.backdrop_path, "w300"),
-                    "viewed_at": viewed_at,
-                    "viewed_at_display": format_timestamp(movie.created_at),
-                }
-            )
 
-        recent_episodes = (
-            SeriesEpisode.query.order_by(SeriesEpisode.updated_at.desc().nullslast())
-            .limit(limit)
-            .all()
-        )
-        for episode in recent_episodes:
-            viewed_at = episode.updated_at or datetime.min
-            series_title = (
-                episode.season.series.name
-                if episode.season and episode.season.series
-                else None
-            )
-            season_number = (
-                episode.season.season_number if episode.season else None
-            )
-            items.append(
-                {
-                    "id": episode.id,
-                    "title": episode.name or f"Episode {episode.episode_number}",
-                    "category": "Serie",
-                    "overview": episode.overview or "",
-                    "poster_url": build_image_url(episode.still_path, "w185"),
-                    "backdrop_url": build_image_url(episode.still_path, "w300"),
-                    "parent_title": series_title,
-                    "season_number": season_number,
-                    "episode_number": episode.episode_number,
-                    "viewed_at": viewed_at,
-                    "viewed_at_display": format_timestamp(episode.updated_at),
-                }
-            )
-    except Exception:
-        db.session.rollback()
+def _parse_favorite_genres(raw_value: Optional[str]) -> list[str]:
+    if not raw_value:
         return []
+    if isinstance(raw_value, list):
+        return [str(item).strip() for item in raw_value if str(item).strip()]
+    return [part.strip() for part in raw_value.split(",") if part.strip()]
 
-    items.sort(
-        key=lambda item: item.get("viewed_at") or datetime.min,
-        reverse=True,
+
+def _serialize_favorite_genres(genres: list[str]) -> str:
+    return ", ".join(sorted({genre.strip() for genre in genres if genre.strip()}))
+
+
+def get_or_create_user_profile_model() -> "UserProfile":
+    profile = UserProfile.query.first()
+    if profile is None:
+        profile = UserProfile()
+        db.session.add(profile)
+        db.session.commit()
+    return profile
+
+
+def fetch_recently_viewed(limit: int = 6) -> list[dict[str, object]]:
+    events = (
+        UserViewEvent.query.order_by(UserViewEvent.created_at.desc())
+        .limit(limit * 3)
+        .all()
     )
-    trimmed = items[:limit]
-    for entry in trimmed:
-        entry.setdefault("viewed_at_display", "Unbekannt")
-        entry.pop("viewed_at", None)
-    return trimmed
+    results: list[dict[str, object]] = []
+
+    for event in events:
+        item: Optional[dict[str, object]] = None
+        if event.content_type == "movie" and event.movie:
+            movie = event.movie
+            item = {
+                "id": movie.id,
+                "title": movie.title,
+                "category": "Film",
+                "overview": movie.overview or "",
+                "poster_url": build_image_url(movie.poster_path, "w154"),
+                "backdrop_url": build_image_url(movie.backdrop_path, "w300"),
+                "viewed_at_display": format_timestamp(event.created_at),
+            }
+        elif event.content_type == "series" and event.series:
+            series = event.series
+            item = {
+                "id": series.id,
+                "title": series.name,
+                "category": "Serie",
+                "overview": series.overview or "",
+                "poster_url": build_image_url(series.poster_path, "w154"),
+                "backdrop_url": build_image_url(series.backdrop_path, "w300"),
+                "viewed_at_display": format_timestamp(event.created_at),
+            }
+        elif event.content_type == "episode" and event.episode:
+            episode = event.episode
+            season = episode.season
+            series = season.series if season else None
+            item = {
+                "id": episode.id,
+                "title": episode.name
+                or (f"Episode {episode.episode_number}" if episode.episode_number else "Episode"),
+                "category": "Serie",
+                "overview": episode.overview or "",
+                "poster_url": build_image_url(episode.still_path, "w185"),
+                "backdrop_url": build_image_url(episode.still_path, "w300"),
+                "parent_title": series.name if series else None,
+                "season_number": season.season_number if season else None,
+                "episode_number": episode.episode_number,
+                "viewed_at_display": format_timestamp(event.created_at),
+            }
+
+        if item is not None:
+            results.append(item)
+        if len(results) >= limit:
+            break
+
+    return results
 
 
 def fetch_library_stats() -> dict[str, int]:
@@ -150,21 +161,154 @@ def fetch_library_stats() -> dict[str, int]:
 
 
 def get_user_profile() -> dict[str, object]:
+    profile_model = get_or_create_user_profile_model()
+    favorite_genres = _parse_favorite_genres(profile_model.favorite_genres)
+    membership_since_display = "Unbekannt"
+    membership_since_value = ""
+    membership_since = profile_model.membership_since
+    if isinstance(membership_since, date):
+        membership_since_display = membership_since.strftime("%d.%m.%Y")
+        membership_since_value = membership_since.isoformat()
+
+    display_initials = profile_model.avatar_initials or _compute_avatar_initials(
+        profile_model.name, profile_model.email
+    )
+
     profile: dict[str, object] = {
-        key: value
-        for key, value in DEFAULT_USER_PROFILE.items()
-        if key != "favorite_genres"
+        "name": profile_model.name or "",
+        "role": profile_model.role or "",
+        "avatar_initials": display_initials,
+        "avatar_initials_value": profile_model.avatar_initials or "",
+        "email": profile_model.email or "",
+        "location": profile_model.location or "",
+        "membership_since_display": membership_since_display,
+        "membership_since_value": membership_since_value,
+        "bio": profile_model.bio or "",
+        "favorite_genres": favorite_genres,
     }
-    profile["favorite_genres"] = list(DEFAULT_USER_PROFILE.get("favorite_genres", []))
+
     profile["recently_viewed"] = fetch_recently_viewed()
     profile["library_stats"] = fetch_library_stats()
-    membership_since = profile.get("membership_since")
-    if isinstance(membership_since, datetime):
-        profile["membership_since_display"] = membership_since.strftime("%d.%m.%Y")
-    else:
-        profile["membership_since_display"] = membership_since or "Unbekannt"
     profile["recent_count"] = len(profile["recently_viewed"])
     return profile
+
+
+def _prune_view_history(max_items: int = 200) -> None:
+    if max_items <= 0:
+        return
+    total = UserViewEvent.query.count()
+    if total <= max_items:
+        return
+    excess = total - max_items
+    stale_events = (
+        UserViewEvent.query.order_by(UserViewEvent.created_at.asc())
+        .limit(excess)
+        .all()
+    )
+    for event in stale_events:
+        db.session.delete(event)
+
+
+def record_user_view_event(content_type: str, object_id: int) -> bool:
+    normalized_type = (content_type or "").strip().lower()
+    if object_id <= 0:
+        return False
+
+    try:
+        now = datetime.utcnow()
+        event: Optional[UserViewEvent] = None
+
+        if normalized_type == "movie":
+            movie = Movie.query.get(object_id)
+            if not movie:
+                return False
+            event = UserViewEvent.query.filter_by(
+                content_type="movie", movie_id=movie.id
+            ).first()
+            if event is None:
+                event = UserViewEvent(content_type="movie", movie=movie)
+                db.session.add(event)
+            event.series = None
+            event.episode = None
+        elif normalized_type == "series":
+            series = Series.query.get(object_id)
+            if not series:
+                return False
+            event = UserViewEvent.query.filter_by(
+                content_type="series", series_id=series.id
+            ).first()
+            if event is None:
+                event = UserViewEvent(content_type="series", series=series)
+                db.session.add(event)
+            event.movie = None
+            event.episode = None
+        elif normalized_type == "episode":
+            episode = SeriesEpisode.query.get(object_id)
+            if not episode:
+                return False
+            event = UserViewEvent.query.filter_by(
+                content_type="episode", episode_id=episode.id
+            ).first()
+            if event is None:
+                event = UserViewEvent(content_type="episode", episode=episode)
+                db.session.add(event)
+            event.movie = None
+            event.series = episode.season.series if episode.season else None
+        else:
+            return False
+
+        event.created_at = now
+        event.updated_at = now
+        db.session.flush()
+        _prune_view_history()
+        db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        return False
+
+
+def update_user_profile_from_form(form_data: dict[str, str]) -> tuple[bool, Optional[str]]:
+    profile = get_or_create_user_profile_model()
+
+    def _clean(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    profile.name = _clean(form_data.get("name"))
+    profile.role = _clean(form_data.get("role"))
+    profile.email = _clean(form_data.get("email"))
+    profile.location = _clean(form_data.get("location"))
+    profile.bio = _clean(form_data.get("bio"))
+
+    avatar_input = form_data.get("avatar_initials") or ""
+    avatar_initials = avatar_input.strip().upper()[:4]
+    profile.avatar_initials = avatar_initials or None
+
+    favorite_genres = _parse_favorite_genres(form_data.get("favorite_genres"))
+    profile.favorite_genres = _serialize_favorite_genres(favorite_genres)
+
+    membership_value = (form_data.get("membership_since") or "").strip()
+    if membership_value:
+        try:
+            profile.membership_since = datetime.strptime(
+                membership_value, "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            db.session.rollback()
+            return False, "Das Datum muss im Format JJJJ-MM-TT angegeben werden."
+    else:
+        profile.membership_since = None
+
+    try:
+        profile.updated_at = datetime.utcnow()
+        db.session.commit()
+        return True, None
+    except Exception:
+        db.session.rollback()
+        return False, "Profil konnte nicht gespeichert werden."
 
 
 @app.context_processor
@@ -362,6 +506,37 @@ class EpisodeStreamingLink(db.Model):
             "mirror_info": self.mirror_info,
         }
 
+
+class UserProfile(db.Model):
+    __tablename__ = "user_profiles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255))
+    role = db.Column(db.String(120))
+    avatar_initials = db.Column(db.String(8))
+    email = db.Column(db.String(255))
+    location = db.Column(db.String(255))
+    membership_since = db.Column(db.Date)
+    bio = db.Column(db.Text)
+    favorite_genres = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserViewEvent(db.Model):
+    __tablename__ = "user_view_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    content_type = db.Column(db.String(20), nullable=False)
+    movie_id = db.Column(db.Integer, db.ForeignKey("movies.id"))
+    series_id = db.Column(db.Integer, db.ForeignKey("series.id"))
+    episode_id = db.Column(db.Integer, db.ForeignKey("series_episodes.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    movie = db.relationship("Movie")
+    series = db.relationship("Series")
+    episode = db.relationship("SeriesEpisode")
 
 class Setting(db.Model):
     __tablename__ = "settings"
@@ -2103,15 +2278,47 @@ def index():
     )
 
 
-@app.route("/profil")
+@app.route("/profil", methods=["GET", "POST"])
 def profile_view():
+    success_message: Optional[str] = None
+    error_message: Optional[str] = None
+    if request.method == "POST":
+        form_payload = request.form.to_dict(flat=True)
+        saved, message = update_user_profile_from_form(form_payload)
+        if saved:
+            success_message = "Profil wurde aktualisiert."
+        else:
+            error_message = message or "Profil konnte nicht gespeichert werden."
+
     profile = get_user_profile()
     return render_template(
         "profile.html",
         active_page="profile",
         page_title="Benutzerprofil",
         user_profile=profile,
+        profile_message=success_message,
+        profile_error=error_message,
     )
+
+
+@app.route("/api/views", methods=["POST"])
+def api_record_view():
+    payload = request.get_json(silent=True) or {}
+    content_type = payload.get("content_type") or payload.get("type")
+    object_id = payload.get("object_id") or payload.get("id")
+
+    if not content_type:
+        return jsonify({"success": False, "message": "Kein Inhaltstyp übermittelt."}), 400
+
+    try:
+        object_id_int = int(object_id)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Ungültige Inhalts-ID."}), 400
+
+    success = record_user_view_event(content_type, object_id_int)
+    status_code = 200 if success else 404
+    message = "Aufruf wurde gespeichert." if success else "Inhalt konnte nicht gespeichert werden."
+    return jsonify({"success": success, "message": message}), status_code
 
 
 @app.route("/filme")

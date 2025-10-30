@@ -115,6 +115,8 @@ const STORAGE_KEYS = Object.freeze({
   allMoviesSort: 'medusa.allMovies.sortPreferences',
 });
 
+let lastRecordedView = { key: null, timestamp: 0 };
+
 let changeSection = () => {};
 let currentSectionName = 'start';
 let previousSectionName = 'start';
@@ -149,6 +151,35 @@ let heroSlides = [];
 let heroActiveIndex = 0;
 let heroRotationTimeout = null;
 const allMoviesRuntimeCache = new Map();
+
+function recordContentView(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return;
+  }
+  const contentType = String(payload.content_type || payload.type || '').toLowerCase();
+  const objectId = Number(payload.object_id ?? payload.id);
+  if (!contentType || !Number.isFinite(objectId) || objectId <= 0) {
+    return;
+  }
+  const key = `${contentType}:${objectId}`;
+  const now = Date.now();
+  if (lastRecordedView.key === key && now - lastRecordedView.timestamp < 3000) {
+    return;
+  }
+  lastRecordedView = { key, timestamp: now };
+  try {
+    fetch('/api/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content_type: contentType, object_id: objectId }),
+      keepalive: true,
+    }).catch(() => {
+      /* Ignorieren: Aufzeichnung ist ein optionaler Komfort. */
+    });
+  } catch (error) {
+    console.warn('Konnte Aufruf nicht speichern.', error);
+  }
+}
 
 detailSeasonSelect?.addEventListener('change', () => {
   const seasonNumber = Number(detailSeasonSelect.value);
@@ -620,6 +651,10 @@ function selectSeriesEpisode(seasonNumber, episodeNumber, { focusList = false } 
   const episode = getSeriesEpisode(seasonValue, episodeValue);
   currentSeriesSelection = { season: seasonValue, episode: episodeValue };
   updateEpisodeSelectionHighlight();
+
+  if (focusList && episode && Number.isFinite(Number(episode.id))) {
+    recordContentView({ content_type: 'episode', object_id: Number(episode.id) });
+  }
 
   if (focusList && detailEpisodeList) {
     const activeButton = detailEpisodeList.querySelector(
@@ -2901,6 +2936,11 @@ function populateDetail(item) {
 
   currentMovieId = isSeries ? null : item?.id ?? null;
   currentMovieTitle = item?.title || item?.name || 'Unbekannter Titel';
+
+  const numericId = Number(item?.id);
+  if (Number.isFinite(numericId) && numericId > 0) {
+    recordContentView({ content_type: contentType, object_id: numericId });
+  }
 
   if (detailLabel) {
     detailLabel.textContent = isSeries ? 'Serie' : 'Film';
