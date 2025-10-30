@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title or 'Benutzerprofil' }}{% endblock %}
+
+{% block main %}
+<section class="profile-hero surface">
+    <div class="profile-hero__inner">
+        <div class="profile-hero__header">
+            <div class="profile-hero__avatar" role="img" aria-label="Profilbild von {{ user_profile.name }}">
+                <span>{{ user_profile.avatar_initials }}</span>
+            </div>
+            <div class="profile-hero__identity">
+                <h1>{{ user_profile.name }}</h1>
+                <p class="profile-hero__role">{{ user_profile.role }}</p>
+                {% if user_profile.favorite_genres %}
+                    <div class="profile-preferences" aria-label="Lieblingsgenres">
+                        {% for genre in user_profile.favorite_genres %}
+                            <span class="chip chip--accent">{{ genre }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        <p class="profile-hero__bio">{{ user_profile.bio }}</p>
+        <ul class="profile-hero__meta">
+            <li>
+                <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
+                <span>Mitglied seit {{ user_profile.membership_since_display }}</span>
+            </li>
+            <li>
+                <span class="material-symbols-outlined" aria-hidden="true">location_on</span>
+                <span>{{ user_profile.location }}</span>
+            </li>
+            <li>
+                <span class="material-symbols-outlined" aria-hidden="true">mail</span>
+                <span>{{ user_profile.email }}</span>
+            </li>
+        </ul>
+        <div class="profile-stats" role="list" aria-label="Profilstatistiken">
+            <div class="profile-stat" role="listitem">
+                <span class="profile-stat__label">Zuletzt angesehen</span>
+                <span class="profile-stat__value">{{ user_profile.recent_count }}</span>
+                <span class="profile-stat__hint">Inhalte der letzten Sitzungen</span>
+            </div>
+            <div class="profile-stat" role="listitem">
+                <span class="profile-stat__label">Filme in der Bibliothek</span>
+                <span class="profile-stat__value">{{ user_profile.library_stats.movies }}</span>
+                <span class="profile-stat__hint">Aktuell verfügbar</span>
+            </div>
+            <div class="profile-stat" role="listitem">
+                <span class="profile-stat__label">Serien &amp; Episoden</span>
+                <span class="profile-stat__value">{{ user_profile.library_stats.series }}</span>
+                <span class="profile-stat__hint">{{ user_profile.library_stats.episodes }} Episoden insgesamt</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="surface profile-section">
+    <header class="profile-section__head">
+        <div>
+            <h2>Zuletzt angesehen</h2>
+            <p>Behalte deine zuletzt gestreamten Filme und Serien im Blick.</p>
+        </div>
+        <a class="section-link" href="{{ url_for('index') }}">
+            <span class="material-symbols-outlined" aria-hidden="true">play_circle</span>
+            <span>Zur Startseite</span>
+        </a>
+    </header>
+    <div class="profile-recent-grid">
+        {% for item in user_profile.recently_viewed %}
+            {% set backdrop = item.backdrop_url or item.poster_url %}
+            <article class="profile-recent-card">
+                <div
+                    class="profile-recent-card__media"
+                    style="--recent-image: url('{{ backdrop or url_for('static', filename='images/poster-placeholder.svg') }}');"
+                    aria-hidden="true"
+                ></div>
+                <div class="profile-recent-card__body">
+                    <span class="chip chip--ghost">{{ item.category }}</span>
+                    <h3>{{ item.title }}</h3>
+                    {% if item.parent_title or item.season_number %}
+                        <p class="profile-recent-card__subtitle">
+                            {{ item.parent_title or 'Serie' }}
+                            {% if item.season_number %} · Staffel {{ item.season_number }}{% endif %}
+                            {% if item.episode_number %} · Episode {{ item.episode_number }}{% endif %}
+                        </p>
+                    {% endif %}
+                    <p class="profile-recent-card__overview">{{ item.overview or 'Keine Beschreibung vorhanden.' }}</p>
+                    <div class="profile-recent-card__meta">
+                        <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
+                        <span>Angesehen am {{ item.viewed_at_display }}</span>
+                    </div>
+                </div>
+            </article>
+        {% else %}
+            <div class="profile-empty">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility_off</span>
+                <p>Du hast bisher noch keine Inhalte angesehen.</p>
+                <a class="btn btn-primary" href="{{ url_for('index') }}">Jetzt entdecken</a>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
