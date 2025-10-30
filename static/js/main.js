@@ -2564,8 +2564,14 @@ function populateDetail(movie) {
     const frame = document.createElement('iframe');
     frame.loading = 'lazy';
     frame.allowFullscreen = true;
+    frame.setAttribute('allowfullscreen', '');
+    frame.setAttribute('webkitallowfullscreen', '');
+    frame.setAttribute('mozallowfullscreen', '');
     frame.referrerPolicy = 'no-referrer';
-    frame.setAttribute('allow', 'fullscreen; picture-in-picture');
+    frame.setAttribute(
+      'allow',
+      'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen',
+    );
 
     frameWrapper.appendChild(frame);
 
