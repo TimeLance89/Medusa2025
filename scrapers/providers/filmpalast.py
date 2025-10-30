@@ -1,4 +1,4 @@
-"""Scraper implementation for filmpalast.to movie and series listings."""
+"""Scraper implementations for filmpalast.to listings."""
 from __future__ import annotations
 
 import re
@@ -11,12 +11,10 @@ from bs4 import BeautifulSoup, Tag
 from ..base import BaseScraper, ProgressCallback, ScraperResult
 
 
-class FilmpalastScraper(BaseScraper):
-    """Scraper for the filmpalast.to provider."""
+class _FilmpalastBase:
+    """Shared functionality for Filmpalast scrapers."""
 
-    name = "filmpalast"
     label = "Filmpalast"
-    content_categories = ("movies", "series")
 
     MOVIE_BASE_URL = "https://filmpalast.to/movies/new/page/{page}"
     SERIES_BASE_URL = "https://filmpalast.to/serien/view/page/{page}"
@@ -38,13 +36,6 @@ class FilmpalastScraper(BaseScraper):
         ),
         "Referer": "https://filmpalast.to/",
     }
-
-    def scrape_page(
-        self, page: int, progress_callback: ProgressCallback = None
-    ) -> List[ScraperResult]:
-        movie_results = self._scrape_movies_page(page, progress_callback)
-        series_results = self._scrape_series_page(page, progress_callback)
-        return [*movie_results, *series_results]
 
     # ------------------------------------------------------------------
     # Movie handling
@@ -330,4 +321,30 @@ class FilmpalastScraper(BaseScraper):
         return True
 
 
-__all__ = ["FilmpalastScraper"]
+class FilmpalastScraper(_FilmpalastBase, BaseScraper):
+    """Scraper for filmpalast.to movie listings."""
+
+    name = "filmpalast"
+    label = "Filmpalast"
+    content_categories = ("movies",)
+
+    def scrape_page(
+        self, page: int, progress_callback: ProgressCallback = None
+    ) -> List[ScraperResult]:
+        return self._scrape_movies_page(page, progress_callback)
+
+
+class FilmpalastSeriesScraper(_FilmpalastBase, BaseScraper):
+    """Scraper for filmpalast.to series listings."""
+
+    name = "filmpalast_series"
+    label = "Filmpalast Serien"
+    content_categories = ("series",)
+
+    def scrape_page(
+        self, page: int, progress_callback: ProgressCallback = None
+    ) -> List[ScraperResult]:
+        return self._scrape_series_page(page, progress_callback)
+
+
+__all__ = ["FilmpalastScraper", "FilmpalastSeriesScraper"]
