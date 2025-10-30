@@ -56,21 +56,21 @@
     {% set poster_url = movie.poster_path and 'https://image.tmdb.org/t/p/w500' + movie.poster_path or movie.backdrop_path and 'https://image.tmdb.org/t/p/w780' + movie.backdrop_path or None %}
     {% if poster_url and movie.id not in marquee_data.ids %}
         {% set _ = marquee_data.ids.append(movie.id) %}
-        {% set _ = marquee_data.items.append({'poster': poster_url, 'title': movie.title, 'meta': 'Hero'}) %}
+        {% set _ = marquee_data.items.append({'id': movie.id, 'poster': poster_url, 'title': movie.title, 'meta': 'Hero'}) %}
     {% endif %}
 {% endfor %}
 {% for movie in popular_movies[:12] %}
     {% set poster_url = movie.poster_path and 'https://image.tmdb.org/t/p/w500' + movie.poster_path or movie.backdrop_path and 'https://image.tmdb.org/t/p/w780' + movie.backdrop_path or None %}
     {% if poster_url and movie.id not in marquee_data.ids %}
         {% set _ = marquee_data.ids.append(movie.id) %}
-        {% set _ = marquee_data.items.append({'poster': poster_url, 'title': movie.title, 'meta': 'Beliebt'}) %}
+        {% set _ = marquee_data.items.append({'id': movie.id, 'poster': poster_url, 'title': movie.title, 'meta': 'Beliebt'}) %}
     {% endif %}
 {% endfor %}
 {% for movie in recent_movies[:8] %}
     {% set poster_url = movie.poster_path and 'https://image.tmdb.org/t/p/w500' + movie.poster_path or movie.backdrop_path and 'https://image.tmdb.org/t/p/w780' + movie.backdrop_path or None %}
     {% if poster_url and movie.id not in marquee_data.ids %}
         {% set _ = marquee_data.ids.append(movie.id) %}
-        {% set _ = marquee_data.items.append({'poster': poster_url, 'title': movie.title, 'meta': 'Neu'}) %}
+        {% set _ = marquee_data.items.append({'id': movie.id, 'poster': poster_url, 'title': movie.title, 'meta': 'Neu'}) %}
     {% endif %}
 {% endfor %}
 
@@ -140,16 +140,28 @@
     </div>
     <div class="poster-marquee__track">
         {% for item in marquee_data.items %}
-        <figure class="poster-marquee__poster">
-            <div class="poster-marquee__poster-image" style="background-image: url('{{ item.poster }}');"></div>
-            <figcaption class="poster-marquee__caption">{{ item.title }}<span>{{ item.meta }}</span></figcaption>
-        </figure>
+        {% set has_movie_id = item.id is not none %}
+        <button
+            class="poster-marquee__poster{% if has_movie_id %} view-detail{% endif %}"
+            type="button"
+            {% if has_movie_id %}data-movie-id="{{ item.id }}"{% else %}disabled{% endif %}
+            aria-label="{{ item.title }} – {{ item.meta }}"
+        >
+            <span class="poster-marquee__poster-image" style="background-image: url('{{ item.poster }}');" aria-hidden="true"></span>
+            <span class="poster-marquee__caption" aria-hidden="true">{{ item.title }}<span>{{ item.meta }}</span></span>
+        </button>
         {% endfor %}
         {% for item in marquee_data.items %}
-        <figure class="poster-marquee__poster">
-            <div class="poster-marquee__poster-image" style="background-image: url('{{ item.poster }}');"></div>
-            <figcaption class="poster-marquee__caption">{{ item.title }}<span>{{ item.meta }}</span></figcaption>
-        </figure>
+        {% set has_movie_id = item.id is not none %}
+        <button
+            class="poster-marquee__poster{% if has_movie_id %} view-detail{% endif %}"
+            type="button"
+            {% if has_movie_id %}data-movie-id="{{ item.id }}"{% else %}disabled{% endif %}
+            aria-label="{{ item.title }} – {{ item.meta }}"
+        >
+            <span class="poster-marquee__poster-image" style="background-image: url('{{ item.poster }}');" aria-hidden="true"></span>
+            <span class="poster-marquee__caption" aria-hidden="true">{{ item.title }}<span>{{ item.meta }}</span></span>
+        </button>
         {% endfor %}
     </div>
 </section>
