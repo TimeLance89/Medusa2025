@@ -2953,6 +2953,29 @@ body.showing-detail {
     justify-content: space-between;
 }
 
+.detail-pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.9rem;
+    border-radius: var(--radius-lg);
+    background: rgba(9, 14, 25, 0.82);
+    border: 1px solid rgba(120, 144, 255, 0.25);
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: clamp(1.8rem, 3vw, 3rem);
+    z-index: 10;
+    white-space: nowrap;
+}
+
+.detail-page-label {
+    min-width: 5rem;
+    text-align: center;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
 .collection-all__head h2 {
     margin: 0;
     font-size: clamp(1.4rem, 2vw, 1.8rem);
