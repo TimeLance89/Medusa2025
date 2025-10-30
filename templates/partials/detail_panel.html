@@ -1,16 +1,14 @@
 <section class="detail-panel" data-section="detail">
     <div class="detail-viewport">
-        <header class="detail-panel__header">
-            <button class="detail-back" type="button" aria-label="Zurück">
-                <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
-                <span>Zurück</span>
-            </button>
-        </header>
-        <div class="detail-panel__main">
-            <article class="player-hero" id="detailHero">
-                <div class="player-hero__backdrop" id="detailBackdrop"></div>
-                <div class="player-hero__scrim"></div>
-                <div class="player-hero__inner">
+        <article class="player-hero" id="detailHero">
+            <div class="player-hero__backdrop" id="detailBackdrop"></div>
+            <div class="player-hero__scrim"></div>
+            <div class="player-hero__inner">
+                <button class="player-hero__back" type="button" aria-label="Zurück">
+                    <span class="player-hero__back-icon">←</span>
+                    <span>Zurück</span>
+                </button>
+                <div class="player-hero__grid">
                     <figure class="player-hero__poster">
                         <img
                             id="detailPoster"
@@ -37,39 +35,43 @@
                         </div>
                     </div>
                 </div>
-            </article>
-            <section class="player-card player-card--streams" aria-labelledby="detailStreamsTitle">
-                <header class="player-card__header">
-                    <div>
-                        <span class="player-card__eyebrow">Medienplayer</span>
-                        <h3 id="detailStreamsTitle">Verfügbare Quellen</h3>
+            </div>
+        </article>
+        <div class="player-layout">
+            <div class="player-layout__primary">
+                <section class="player-card player-card--streams" aria-labelledby="detailStreamsTitle">
+                    <header class="player-card__header">
+                        <div>
+                            <span class="player-card__eyebrow">Medienplayer</span>
+                            <h3 id="detailStreamsTitle">Verfügbare Quellen</h3>
+                        </div>
+                        <p class="player-card__subtitle">
+                            Wähle einen Mirror oder öffne den Stream in einem neuen Tab.
+                        </p>
+                    </header>
+                    <div class="player-card__body">
+                        <div id="detailStreaming" class="player-streams" role="region" aria-live="polite"></div>
                     </div>
-                    <p class="player-card__subtitle">
-                        Wähle einen Mirror oder öffne den Stream in einem neuen Tab.
-                    </p>
-                </header>
-                <div class="player-card__body">
-                    <div id="detailStreaming" class="player-streams" role="region" aria-live="polite"></div>
-                </div>
-            </section>
-        </div>
-        <div class="detail-panel__content">
-            <section class="player-card player-card--overview">
-                <header class="player-card__header">
-                    <h3>Handlung</h3>
-                </header>
-                <div class="player-card__body">
-                    <p id="detailOverviewSecondary"></p>
-                </div>
-            </section>
-            <section class="player-card player-card--facts">
-                <header class="player-card__header">
-                    <h3>Details</h3>
-                </header>
-                <div class="player-card__body">
-                    <ul id="detailFacts" class="player-facts"></ul>
-                </div>
-            </section>
+                </section>
+                <section class="player-card player-card--overview">
+                    <header class="player-card__header">
+                        <h3>Handlung</h3>
+                    </header>
+                    <div class="player-card__body">
+                        <p id="detailOverviewSecondary"></p>
+                    </div>
+                </section>
+            </div>
+            <aside class="player-layout__aside">
+                <section class="player-card player-card--facts">
+                    <header class="player-card__header">
+                        <h3>Details</h3>
+                    </header>
+                    <div class="player-card__body">
+                        <ul id="detailFacts" class="player-facts"></ul>
+                    </div>
+                </section>
+            </aside>
         </div>
         <section class="player-card player-card--cast">
             <header class="player-card__header player-card__header--row">
