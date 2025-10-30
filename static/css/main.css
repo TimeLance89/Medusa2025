@@ -3121,3 +3121,146 @@ body.showing-detail {
     max-width: 24ch;
 }
 
+
+
+.detail-section--episodes {
+    grid-column: 1 / -1;
+}
+
+.detail-section--episodes[hidden] {
+    display: none !important;
+}
+
+.detail-episodes {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1rem, 2vw, 1.6rem);
+}
+
+.detail-episodes__controls {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+}
+
+.detail-episodes__label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.detail-episodes__select {
+    appearance: none;
+    border: 1px solid rgba(120, 144, 255, 0.32);
+    background: rgba(12, 16, 28, 0.85);
+    color: var(--text-primary);
+    padding: 0.5rem 1.1rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.95rem;
+    box-shadow: 0 12px 28px rgba(5, 9, 20, 0.35);
+}
+
+.detail-episodes__layout {
+    display: grid;
+    gap: clamp(1rem, 2vw, 1.8rem);
+    grid-template-columns: minmax(220px, 300px) 1fr;
+}
+
+@media (max-width: 960px) {
+    .detail-episodes__layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.detail-episodes__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-height: clamp(280px, 45vh, 360px);
+    overflow-y: auto;
+    padding-right: 0.3rem;
+}
+
+.detail-episodes__list .empty {
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    background: rgba(12, 16, 30, 0.82);
+    border: 1px dashed rgba(120, 144, 255, 0.28);
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.episode-item {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(110, 134, 255, 0.26);
+    background: rgba(14, 18, 32, 0.85);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.episode-item:hover,
+.episode-item:focus {
+    outline: none;
+    border-color: rgba(136, 160, 255, 0.55);
+    box-shadow: 0 14px 30px rgba(8, 12, 28, 0.45);
+    transform: translateY(-2px);
+}
+
+.episode-item.is-active {
+    border-color: rgba(144, 178, 255, 0.8);
+    box-shadow: 0 16px 36px rgba(10, 16, 32, 0.5);
+    background: rgba(20, 26, 44, 0.92);
+}
+
+.episode-item__title {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.episode-item__meta {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.detail-episodes__info {
+    background: rgba(10, 14, 26, 0.78);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(120, 144, 255, 0.22);
+    padding: clamp(1rem, 2.4vw, 1.6rem);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    box-shadow: 0 20px 44px rgba(6, 10, 24, 0.45);
+}
+
+.detail-episodes__head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.detail-episodes__title {
+    margin: 0;
+    font-size: clamp(1.1rem, 2vw, 1.4rem);
+}
+
+.detail-episodes__meta {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.detail-episodes__overview {
+    margin: 0;
+    color: rgba(210, 220, 255, 0.78);
+    line-height: 1.6;
+}

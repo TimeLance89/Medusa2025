@@ -95,6 +95,141 @@ class StreamingLink(db.Model):
         }
 
 
+class Series(db.Model):
+    __tablename__ = "series"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tmdb_id = db.Column(db.Integer, unique=True, nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    overview = db.Column(db.Text)
+    poster_path = db.Column(db.String(255))
+    backdrop_path = db.Column(db.String(255))
+    first_air_date = db.Column(db.String(32))
+    last_air_date = db.Column(db.String(32))
+    rating = db.Column(db.Float)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    seasons = db.relationship(
+        "SeriesSeason",
+        back_populates="series",
+        cascade="all, delete-orphan",
+        order_by="SeriesSeason.season_number",
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "tmdb_id": self.tmdb_id,
+            "name": self.name,
+            "overview": self.overview,
+            "poster_path": self.poster_path,
+            "backdrop_path": self.backdrop_path,
+            "first_air_date": self.first_air_date,
+            "last_air_date": self.last_air_date,
+            "rating": self.rating,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class SeriesSeason(db.Model):
+    __tablename__ = "series_seasons"
+
+    id = db.Column(db.Integer, primary_key=True)
+    series_id = db.Column(db.Integer, db.ForeignKey("series.id"), nullable=False)
+    tmdb_id = db.Column(db.Integer)
+    season_number = db.Column(db.Integer, nullable=False)
+    name = db.Column(db.String(255))
+    overview = db.Column(db.Text)
+    poster_path = db.Column(db.String(255))
+    air_date = db.Column(db.String(32))
+    episode_count = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    series = db.relationship("Series", back_populates="seasons")
+    episodes = db.relationship(
+        "SeriesEpisode",
+        back_populates="season",
+        cascade="all, delete-orphan",
+        order_by="SeriesEpisode.episode_number",
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "series_id", "season_number", name="uq_series_season_number"
+        ),
+    )
+
+
+class SeriesEpisode(db.Model):
+    __tablename__ = "series_episodes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    season_id = db.Column(db.Integer, db.ForeignKey("series_seasons.id"), nullable=False)
+    tmdb_id = db.Column(db.Integer)
+    episode_number = db.Column(db.Integer, nullable=False)
+    name = db.Column(db.String(255))
+    overview = db.Column(db.Text)
+    still_path = db.Column(db.String(255))
+    air_date = db.Column(db.String(32))
+    runtime = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    season = db.relationship("SeriesSeason", back_populates="episodes")
+    streaming_links = db.relationship(
+        "EpisodeStreamingLink",
+        back_populates="episode",
+        cascade="all, delete-orphan",
+        order_by="EpisodeStreamingLink.id",
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "season_id", "episode_number", name="uq_season_episode_number"
+        ),
+    )
+
+
+class EpisodeStreamingLink(db.Model):
+    __tablename__ = "episode_streaming_links"
+
+    id = db.Column(db.Integer, primary_key=True)
+    episode_id = db.Column(
+        db.Integer, db.ForeignKey("series_episodes.id"), nullable=False
+    )
+    source_name = db.Column(db.String(120), nullable=False)
+    url = db.Column(db.String(500), nullable=False)
+    mirror_info = db.Column(db.String(120))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    episode = db.relationship("SeriesEpisode", back_populates="streaming_links")
+
+    __table_args__ = (
+        db.UniqueConstraint("episode_id", "url", name="uq_episode_stream"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "episode_id": self.episode_id,
+            "source_name": self.source_name,
+            "url": self.url,
+            "mirror_info": self.mirror_info,
+        }
+
+
 class Setting(db.Model):
     __tablename__ = "settings"
 
@@ -104,6 +239,16 @@ class Setting(db.Model):
 
 def movie_has_valid_streaming_link():
     return Movie.streaming_links.any(func.length(func.trim(StreamingLink.url)) > 0)
+
+
+def series_has_valid_streaming_link():
+    return Series.seasons.any(
+        SeriesSeason.episodes.any(
+            SeriesEpisode.streaming_links.any(
+                func.length(func.trim(EpisodeStreamingLink.url)) > 0
+            )
+        )
+    )
 
 
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -298,6 +443,115 @@ def fetch_tmdb_details(tmdb_id: int) -> dict:
     }
 
 
+def fetch_tmdb_series_details(tmdb_id: int) -> dict:
+    api_key = get_tmdb_api_key()
+    if not api_key or tmdb_id <= 0:
+        return {}
+
+    params = {
+        "api_key": api_key,
+        "language": "de-DE",
+        "append_to_response": "aggregate_credits,videos",
+        "include_video_language": "de-DE,en-US",
+    }
+
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/tv/{tmdb_id}", params=params, timeout=20
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        app.logger.warning("TMDB series detail request failed for %s: %s", tmdb_id, exc)
+        return {}
+
+    payload = response.json()
+
+    cast_entries = payload.get("aggregate_credits", {}).get("cast", [])
+    cast_details: List[dict] = []
+    for member in cast_entries:
+        name = member.get("name")
+        if not name:
+            continue
+        roles = member.get("roles") or []
+        character_name = None
+        for role in roles:
+            character_name = role.get("character")
+            if character_name:
+                break
+        cast_details.append(
+            {
+                "name": name,
+                "character": character_name,
+                "profile_path": member.get("profile_path"),
+            }
+        )
+        if len(cast_details) >= 12:
+            break
+
+    trailer_payload = {}
+    for video in payload.get("videos", {}).get("results", []):
+        if not video.get("key") or not video.get("site"):
+            continue
+        if video.get("site") != "YouTube":
+            continue
+        video_type = (video.get("type") or "").lower()
+        if video_type in {"trailer", "teaser"}:
+            trailer_payload = {
+                "site": video.get("site"),
+                "key": video.get("key"),
+                "name": video.get("name"),
+                "official": video.get("official", False),
+            }
+            if video_type == "trailer":
+                break
+
+    seasons = payload.get("seasons") or []
+
+    return {
+        "name": payload.get("name") or payload.get("original_name"),
+        "overview": payload.get("overview"),
+        "poster_path": payload.get("poster_path"),
+        "backdrop_path": payload.get("backdrop_path"),
+        "first_air_date": payload.get("first_air_date"),
+        "last_air_date": payload.get("last_air_date"),
+        "rating": payload.get("vote_average"),
+        "genres": [
+            genre.get("name")
+            for genre in payload.get("genres", [])
+            if genre.get("name")
+        ],
+        "tagline": payload.get("tagline"),
+        "cast": cast_details,
+        "trailer": trailer_payload,
+        "seasons": seasons,
+        "status": payload.get("status"),
+        "episode_run_time": payload.get("episode_run_time") or [],
+    }
+
+
+def fetch_tmdb_season_details(tmdb_id: int, season_number: int) -> List[dict]:
+    api_key = get_tmdb_api_key()
+    if not api_key or tmdb_id <= 0 or season_number < 0:
+        return []
+
+    params = {"api_key": api_key, "language": "de-DE"}
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_number}",
+            params=params,
+            timeout=20,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        app.logger.warning(
+            "TMDB season request failed for %s S%02d: %s", tmdb_id, season_number, exc
+        )
+        return []
+
+    payload = response.json()
+    return payload.get("episodes", []) or []
+
+
 def build_tmdb_image(path: Optional[str], size: str = "w500") -> Optional[str]:
     if not path:
         return None
@@ -306,6 +560,11 @@ def build_tmdb_image(path: Optional[str], size: str = "w500") -> Optional[str]:
 
 _TRAILING_DESCRIPTOR_PATTERN = re.compile(
     r"(?i)\b(stream|online|anschauen|kostenlos|gratis|hd|ganzer\s+film|full\s+movie|german|deutsch|kino)\b.*$"
+)
+
+
+_SERIES_EPISODE_PATTERN = re.compile(
+    r"(?i)(?P<title>.+?)\s*S(?P<season>\d{1,2})E(?P<episode>\d{1,2})"
 )
 
 
@@ -330,6 +589,34 @@ def _extract_title_and_year(raw_title: str) -> Tuple[str, Optional[int]]:
         title = raw_title.strip()
 
     return title, year
+
+
+def _extract_series_metadata(raw_title: str) -> Tuple[str, Optional[int], Optional[int]]:
+    if not raw_title:
+        return "", None, None
+
+    match = _SERIES_EPISODE_PATTERN.search(raw_title)
+    if not match:
+        title, _ = _extract_title_and_year(raw_title)
+        return title, None, None
+
+    title = match.group("title") or ""
+    title = title.strip()
+    season: Optional[int]
+    episode: Optional[int]
+    try:
+        season = int(match.group("season"))
+    except (TypeError, ValueError):
+        season = None
+    try:
+        episode = int(match.group("episode"))
+    except (TypeError, ValueError):
+        episode = None
+
+    if not title:
+        title, _ = _extract_title_and_year(raw_title)
+
+    return title, season, episode
 
 
 def search_tmdb_by_title(raw_title: str) -> Optional[dict]:
@@ -402,6 +689,76 @@ def search_tmdb_by_title(raw_title: str) -> Optional[dict]:
     return None
 
 
+def search_tmdb_series_by_title(raw_title: str) -> Optional[dict]:
+    api_key = get_tmdb_api_key()
+    if not api_key:
+        return None
+
+    base_title, year = _extract_title_and_year(raw_title)
+    normalized_base = _normalize_text(base_title) if base_title else ""
+
+    attempts: List[Tuple[str, Optional[int]]] = []
+    if base_title:
+        attempts.append((base_title, year))
+        attempts.append((base_title, None))
+    stripped = raw_title.strip()
+    if stripped:
+        attempts.append((stripped, year))
+        attempts.append((stripped, None))
+
+    seen: Set[Tuple[str, Optional[int]]] = set()
+
+    for query, year_hint in attempts:
+        clean_query = query.strip()
+        if not clean_query:
+            continue
+
+        key = (clean_query.lower(), year_hint)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        params = {
+            "api_key": api_key,
+            "language": "de-DE",
+            "query": clean_query,
+            "include_adult": "false",
+        }
+        if year_hint:
+            params["first_air_date_year"] = year_hint
+
+        try:
+            response = requests.get(
+                "https://api.themoviedb.org/3/search/tv",
+                params=params,
+                timeout=20,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            app.logger.warning("TMDB series search failed for %s: %s", clean_query, exc)
+            continue
+
+        results = response.json().get("results") or []
+        if not results:
+            continue
+
+        if year_hint:
+            for candidate in results:
+                air_date = (candidate.get("first_air_date") or "")[:4]
+                if air_date.isdigit() and int(air_date) == year_hint:
+                    return candidate
+
+        if normalized_base:
+            for candidate in results:
+                candidate_title = candidate.get("name") or candidate.get("original_name") or ""
+                if _normalize_text(candidate_title) == normalized_base:
+                    return candidate
+
+        return results[0]
+
+    return None
+
+
 def _apply_tmdb_metadata(movie: Movie, tmdb_data: dict) -> None:
     movie.title = (
         tmdb_data.get("title")
@@ -414,6 +771,21 @@ def _apply_tmdb_metadata(movie: Movie, tmdb_data: dict) -> None:
     movie.backdrop_path = tmdb_data.get("backdrop_path")
     movie.release_date = tmdb_data.get("release_date")
     movie.rating = tmdb_data.get("vote_average")
+
+
+def _apply_tmdb_series_metadata(series: Series, tmdb_data: dict) -> None:
+    series.name = (
+        tmdb_data.get("name")
+        or tmdb_data.get("original_name")
+        or tmdb_data.get("title")
+        or series.name
+    )
+    series.overview = tmdb_data.get("overview")
+    series.poster_path = tmdb_data.get("poster_path")
+    series.backdrop_path = tmdb_data.get("backdrop_path")
+    series.first_air_date = tmdb_data.get("first_air_date")
+    series.last_air_date = tmdb_data.get("last_air_date")
+    series.rating = tmdb_data.get("vote_average")
 
 
 def upsert_movies(tmdb_movies: List[dict]) -> List[Movie]:
@@ -446,7 +818,106 @@ def _generate_placeholder_tmdb_id() -> int:
     return lowest_placeholder - 1
 
 
-def attach_streaming_link(
+def _generate_series_placeholder_tmdb_id() -> int:
+    lowest_placeholder = (
+        db.session.query(func.min(Series.tmdb_id))
+        .filter(Series.tmdb_id < 0)
+        .scalar()
+    )
+    if lowest_placeholder is None:
+        return -1
+    return lowest_placeholder - 1
+
+
+def sync_series_with_tmdb(
+    series: Series, tmdb_payload: Optional[dict] = None, *, include_episodes: bool = True
+) -> None:
+    if series.tmdb_id <= 0:
+        return
+
+    if tmdb_payload is None:
+        tmdb_payload = fetch_tmdb_series_details(series.tmdb_id)
+
+    if not tmdb_payload:
+        return
+
+    _apply_tmdb_series_metadata(series, tmdb_payload)
+
+    seasons_payload = tmdb_payload.get("seasons") or []
+
+    for season_entry in seasons_payload:
+        try:
+            season_number = int(season_entry.get("season_number"))
+        except (TypeError, ValueError):
+            continue
+        if season_number < 0:
+            continue
+
+        season = (
+            SeriesSeason.query.filter_by(
+                series_id=series.id, season_number=season_number
+            ).first()
+        )
+        if season is None:
+            season = SeriesSeason(series=series, season_number=season_number)
+
+        season.tmdb_id = season_entry.get("id")
+        season.name = season_entry.get("name") or season.name
+        season.overview = season_entry.get("overview")
+        season.poster_path = season_entry.get("poster_path")
+        season.air_date = season_entry.get("air_date")
+        season.episode_count = season_entry.get("episode_count")
+        db.session.add(season)
+        db.session.flush()
+
+        if not include_episodes:
+            continue
+
+        existing_episode_numbers = {
+            episode.episode_number for episode in season.episodes
+        }
+        total_expected = season_entry.get("episode_count")
+        should_fetch = not existing_episode_numbers
+        if (
+            isinstance(total_expected, int)
+            and total_expected > 0
+            and len(existing_episode_numbers) < total_expected
+        ):
+            should_fetch = True
+
+        if not should_fetch:
+            continue
+
+        episodes_payload = fetch_tmdb_season_details(series.tmdb_id, season_number)
+        for episode_entry in episodes_payload:
+            try:
+                episode_number = int(episode_entry.get("episode_number"))
+            except (TypeError, ValueError):
+                continue
+            if episode_number < 0:
+                continue
+
+            episode = (
+                SeriesEpisode.query.filter_by(
+                    season_id=season.id, episode_number=episode_number
+                ).first()
+            )
+            if episode is None:
+                episode = SeriesEpisode(season=season, episode_number=episode_number)
+
+            episode.tmdb_id = episode_entry.get("id")
+            episode.name = episode_entry.get("name") or episode.name
+            episode.overview = episode_entry.get("overview")
+            episode.still_path = episode_entry.get("still_path")
+            episode.air_date = episode_entry.get("air_date")
+            runtime = episode_entry.get("runtime")
+            episode.runtime = runtime if isinstance(runtime, int) else None
+            db.session.add(episode)
+
+    db.session.flush()
+
+
+def attach_movie_streaming_link(
     movie_title: str,
     streaming_url: str,
     mirror_info: Optional[str] = None,
@@ -530,6 +1001,209 @@ def attach_streaming_link(
     db.session.add(link)
     db.session.commit()
     return link
+
+
+def attach_series_streaming_entry(entry: ScraperResult) -> Tuple[str, Optional[str]]:
+    metadata = entry.metadata or {}
+    raw_title = metadata.get("series_title") or metadata.get("title") or entry.title or ""
+    series_title, parsed_season, parsed_episode = _extract_series_metadata(raw_title)
+
+    season_value = metadata.get("season", parsed_season)
+    episode_value = metadata.get("episode", parsed_episode)
+
+    try:
+        season_number = int(season_value)
+    except (TypeError, ValueError):
+        season_number = parsed_season
+
+    try:
+        episode_number = int(episode_value)
+    except (TypeError, ValueError):
+        episode_number = parsed_episode
+
+    if season_number is None or episode_number is None:
+        return "skipped", None
+
+    normalized_title = (series_title or "").strip()
+    if not normalized_title:
+        normalized_title = (raw_title or "").strip()
+    if not normalized_title:
+        normalized_title = f"Unbekannte Serie"
+
+    base_title, _ = _extract_title_and_year(normalized_title)
+
+    series: Optional[Series] = None
+    if normalized_title:
+        series = (
+            Series.query.filter(func.lower(Series.name) == normalized_title.lower())
+            .first()
+        )
+
+    if series is None and base_title and base_title.lower() != normalized_title.lower():
+        series = (
+            Series.query.filter(func.lower(Series.name) == base_title.lower())
+            .first()
+        )
+
+    if series is None and base_title:
+        safe_title = (
+            base_title.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        like_pattern = f"%{safe_title}%"
+        series = (
+            Series.query.filter(Series.name.ilike(like_pattern, escape="\\"))
+            .order_by(func.length(Series.name))
+            .first()
+        )
+
+    tmdb_entry: Optional[dict] = None
+    if normalized_title and (series is None or series.tmdb_id < 0):
+        tmdb_entry = search_tmdb_series_by_title(normalized_title)
+        if not tmdb_entry and base_title and base_title != normalized_title:
+            tmdb_entry = search_tmdb_series_by_title(base_title)
+
+    if tmdb_entry:
+        existing_tmdb_series = Series.query.filter_by(tmdb_id=tmdb_entry["id"]).first()
+        if existing_tmdb_series and series and existing_tmdb_series.id != series.id:
+            for season in list(series.seasons):
+                season.series = existing_tmdb_series
+            db.session.flush()
+            db.session.delete(series)
+            series = existing_tmdb_series
+        elif existing_tmdb_series:
+            series = existing_tmdb_series
+        else:
+            if series is None:
+                series = Series(
+                    tmdb_id=tmdb_entry["id"],
+                    name=(
+                        tmdb_entry.get("name")
+                        or tmdb_entry.get("original_name")
+                        or normalized_title
+                        or "Unbekannte Serie"
+                    ),
+                )
+            elif series.tmdb_id < 0:
+                series.tmdb_id = tmdb_entry["id"]
+
+        if series is None:
+            series = Series(
+                tmdb_id=tmdb_entry["id"],
+                name=normalized_title or "Unbekannte Serie",
+            )
+
+        tmdb_details = fetch_tmdb_series_details(tmdb_entry["id"])
+        if tmdb_details:
+            db.session.add(series)
+            db.session.flush()
+            sync_series_with_tmdb(series, tmdb_details)
+        else:
+            _apply_tmdb_series_metadata(series, tmdb_entry)
+    else:
+        if series is None:
+            fallback_title = normalized_title or base_title or raw_title or "Unbekannte Serie"
+            series = Series(
+                tmdb_id=_generate_series_placeholder_tmdb_id(),
+                name=fallback_title,
+            )
+        db.session.add(series)
+        db.session.flush()
+
+        if series.tmdb_id > 0:
+            sync_series_with_tmdb(series)
+
+    db.session.add(series)
+    db.session.flush()
+
+    if series.tmdb_id > 0:
+        season = (
+            SeriesSeason.query.filter_by(
+                series_id=series.id, season_number=season_number
+            ).first()
+        )
+        episode = None
+        if season is None or not any(
+            ep.episode_number == episode_number for ep in (season.episodes if season else [])
+        ):
+            sync_series_with_tmdb(series)
+            season = (
+                SeriesSeason.query.filter_by(
+                    series_id=series.id, season_number=season_number
+                ).first()
+            )
+            if season:
+                episode = (
+                    SeriesEpisode.query.filter_by(
+                        season_id=season.id, episode_number=episode_number
+                    ).first()
+                )
+    else:
+        season = (
+            SeriesSeason.query.filter_by(
+                series_id=series.id, season_number=season_number
+            ).first()
+        )
+        episode = (
+            SeriesEpisode.query.filter_by(
+                season_id=season.id, episode_number=episode_number
+            ).first()
+            if season
+            else None
+        )
+
+    if season is None:
+        season = SeriesSeason(series=series, season_number=season_number)
+        season.name = season.name or f"Staffel {season_number}"
+        db.session.add(season)
+        db.session.flush()
+
+    if episode is None:
+        episode = SeriesEpisode(season=season, episode_number=episode_number)
+        db.session.add(episode)
+
+    if not episode.name:
+        episode.name = f"Episode {episode_number:02d}"
+    if metadata.get("episode_title"):
+        episode.name = metadata.get("episode_title")
+    if not episode.overview and metadata.get("overview"):
+        episode.overview = metadata.get("overview")
+
+    db.session.add(episode)
+    db.session.flush()
+
+    source_name = entry.source_name or metadata.get("source_name") or "Unbekannt"
+    mirror_info = metadata.get("mirror_info") or entry.mirror_info
+    if not mirror_info:
+        mirror_info = metadata.get("host_name")
+
+    link = EpisodeStreamingLink.query.filter_by(
+        episode_id=episode.id, url=entry.streaming_url
+    ).first()
+    if link:
+        updated = False
+        if source_name and link.source_name != source_name:
+            link.source_name = source_name
+            updated = True
+        if mirror_info != link.mirror_info:
+            link.mirror_info = mirror_info
+            updated = True
+        if updated:
+            db.session.add(link)
+            db.session.commit()
+            return "updated", f"{series.name} S{season_number:02d}E{episode_number:02d}"
+        return "exists", f"{series.name} S{season_number:02d}E{episode_number:02d}"
+
+    link = EpisodeStreamingLink(
+        episode=episode,
+        url=entry.streaming_url,
+        source_name=source_name,
+        mirror_info=mirror_info,
+    )
+    db.session.add(link)
+    db.session.commit()
+    return "created", f"{series.name} S{season_number:02d}E{episode_number:02d}"
 
 
 def _now_iso() -> str:
@@ -770,6 +1444,15 @@ def _run_scraper(provider: str, start_page: int, include_series: bool = False) -
 
                 for entry in entries:
                     title = entry.title or "Unbekannt"
+                    metadata = entry.metadata or {}
+                    content_type = (metadata.get("type") or "").lower()
+                    looks_like_series = content_type == "series"
+                    if not looks_like_series:
+                        _, season_guess, episode_guess = _extract_series_metadata(
+                            entry.title or ""
+                        )
+                        if season_guess is not None and episode_guess is not None:
+                            looks_like_series = True
                     _set_scraper_status(
                         provider,
                         last_title=title,
@@ -777,6 +1460,42 @@ def _run_scraper(provider: str, start_page: int, include_series: bool = False) -
                         error=None,
                     )
                     try:
+                        if looks_like_series:
+                            status, series_title = attach_series_streaming_entry(entry)
+                            display_title = series_title or title
+                            if status == "created":
+                                processed_links += 1
+                                _set_scraper_status(
+                                    provider,
+                                    processed_links=processed_links,
+                                    error=None,
+                                )
+                                _append_scraper_log(
+                                    provider,
+                                    f"[{provider_label}] Serien-Link gespeichert: {display_title}",
+                                    "success",
+                                )
+                            elif status == "updated":
+                                _append_scraper_log(
+                                    provider,
+                                    f"[{provider_label}] Serien-Link aktualisiert: {display_title}",
+                                    "success",
+                                )
+                            elif status == "exists":
+                                _append_scraper_log(
+                                    provider,
+                                    f"[{provider_label}] Serien-Link bereits vorhanden: {display_title}",
+                                    "info",
+                                )
+                            else:
+                                _append_scraper_log(
+                                    provider,
+                                    f"[{provider_label}] Serien-Link übersprungen: {display_title}",
+                                    "info",
+                                )
+                            if status != "skipped":
+                                continue
+
                         existing_link = StreamingLink.query.filter_by(
                             url=entry.streaming_url
                         ).first()
@@ -806,7 +1525,7 @@ def _run_scraper(provider: str, start_page: int, include_series: bool = False) -
                                 )
                             continue
 
-                        attach_streaming_link(
+                        attach_movie_streaming_link(
                             entry.title or title,
                             entry.streaming_url,
                             entry.mirror_info,
@@ -960,6 +1679,33 @@ def build_library_context() -> dict:
         film_sections.append({"title": "Mit Streaming Links", "items": linked_movies})
 
     series_sections: List[dict] = []
+    episode_link_filter = func.length(func.trim(EpisodeStreamingLink.url)) > 0
+    series_query = (
+        Series.query.join(SeriesSeason)
+        .join(SeriesEpisode)
+        .join(EpisodeStreamingLink)
+        .filter(episode_link_filter)
+        .distinct()
+    )
+
+    popular_series = (
+        series_query.order_by(Series.rating.desc().nullslast(), Series.updated_at.desc())
+        .limit(20)
+        .all()
+    )
+    recent_series = (
+        series_query.order_by(
+            Series.updated_at.desc().nullslast(), Series.created_at.desc()
+        )
+        .limit(20)
+        .all()
+    )
+
+    if popular_series:
+        series_sections.append({"title": "Top Serien", "items": popular_series})
+    if recent_series:
+        series_sections.append({"title": "Neu hinzugefügt", "items": recent_series})
+
     scraped = StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
 
     hero_movies = popular_movies[:5]
@@ -1275,6 +2021,91 @@ def api_movie_detail(movie_id: int):
     return jsonify({"success": True, "movie": movie_payload})
 
 
+@app.route("/api/series/<int:series_id>")
+def api_series_detail(series_id: int):
+    series = Series.query.get_or_404(series_id)
+
+    tmdb_details: dict = {}
+    if series.tmdb_id > 0:
+        tmdb_details = fetch_tmdb_series_details(series.tmdb_id)
+        if tmdb_details:
+            sync_series_with_tmdb(series, tmdb_details)
+
+    poster_url = build_tmdb_image(series.poster_path)
+    backdrop_url = build_tmdb_image(series.backdrop_path, "w1280")
+
+    seasons_payload: List[dict] = []
+    default_episode_reference: Optional[dict] = None
+    default_streams: List[dict] = []
+    total_episodes = 0
+
+    for season in sorted(series.seasons, key=lambda item: item.season_number):
+        episodes_payload: List[dict] = []
+        for episode in sorted(season.episodes, key=lambda item: item.episode_number):
+            links = [link.to_dict() for link in episode.streaming_links if (link.url or "").strip()]
+            if links and default_episode_reference is None:
+                default_episode_reference = {
+                    "id": episode.id,
+                    "season_number": season.season_number,
+                    "episode_number": episode.episode_number,
+                }
+                default_streams = links
+
+            episodes_payload.append(
+                {
+                    "id": episode.id,
+                    "episode_number": episode.episode_number,
+                    "name": episode.name,
+                    "overview": episode.overview,
+                    "air_date": episode.air_date,
+                    "runtime": episode.runtime,
+                    "still_url": build_tmdb_image(episode.still_path, "w780"),
+                    "streaming_links": links,
+                }
+            )
+            total_episodes += 1
+
+        seasons_payload.append(
+            {
+                "id": season.id,
+                "season_number": season.season_number,
+                "name": season.name or f"Staffel {season.season_number}",
+                "overview": season.overview,
+                "poster_url": build_tmdb_image(season.poster_path),
+                "air_date": season.air_date,
+                "episode_count": season.episode_count or len(episodes_payload),
+                "episodes": episodes_payload,
+            }
+        )
+
+    series_payload = {
+        "id": series.id,
+        "content_type": "series",
+        "title": series.name,
+        "overview": series.overview,
+        "poster_url": poster_url,
+        "backdrop_url": backdrop_url,
+        "first_air_date": series.first_air_date,
+        "last_air_date": series.last_air_date,
+        "release_date": series.first_air_date,
+        "rating": series.rating,
+        "genres": tmdb_details.get("genres", []) if tmdb_details else [],
+        "tagline": tmdb_details.get("tagline") if tmdb_details else None,
+        "cast": tmdb_details.get("cast", []) if tmdb_details else [],
+        "trailer": tmdb_details.get("trailer") if tmdb_details else None,
+        "status": tmdb_details.get("status") if tmdb_details else None,
+        "episode_run_time": tmdb_details.get("episode_run_time", []) if tmdb_details else [],
+        "streaming_links": default_streams,
+        "default_episode": default_episode_reference,
+        "seasons": seasons_payload,
+        "total_seasons": len(seasons_payload),
+        "total_episodes": total_episodes,
+    }
+
+    db.session.commit()
+    return jsonify({"success": True, "series": series_payload})
+
+
 @app.route("/api/scrape/<provider>", methods=["POST"])
 @app.route("/api/scrape/kinox", methods=["POST"], defaults={"provider": "kinox"})
 def api_scrape_provider(provider: str):
@@ -1377,9 +2208,15 @@ def api_scrape_status():
 def api_reset_scraped():
     placeholder_count = Movie.query.filter(Movie.tmdb_id < 0).count()
     tmdb_count = Movie.query.filter(Movie.tmdb_id > 0).count()
+    placeholder_series = Series.query.filter(Series.tmdb_id < 0).count()
+    tmdb_series = Series.query.filter(Series.tmdb_id > 0).count()
 
     removed_links = StreamingLink.query.delete(synchronize_session=False)
     removed_movies = Movie.query.delete(synchronize_session=False)
+    removed_episode_links = EpisodeStreamingLink.query.delete(synchronize_session=False)
+    removed_episodes = SeriesEpisode.query.delete(synchronize_session=False)
+    removed_seasons = SeriesSeason.query.delete(synchronize_session=False)
+    removed_series = Series.query.delete(synchronize_session=False)
     for provider in SCRAPER_MANAGER.available_providers():
         set_scraper_setting(provider.name, "next_page", 1)
         set_scraper_setting(provider.name, "last_page", 0)
@@ -1416,8 +2253,14 @@ def api_reset_scraped():
             "success": True,
             "removed_links": removed_links,
             "removed_movies": removed_movies,
+            "removed_episode_links": removed_episode_links,
+            "removed_series_episodes": removed_episodes,
+            "removed_series_seasons": removed_seasons,
+            "removed_series": removed_series,
             "removed_placeholder_movies": placeholder_count,
             "removed_tmdb_movies": tmdb_count,
+            "removed_placeholder_series": placeholder_series,
+            "removed_tmdb_series": tmdb_series,
         }
     )
 
