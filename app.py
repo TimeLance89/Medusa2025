@@ -1,3 +1,4 @@
+import glob
 import os
 import re
 import time
@@ -7,11 +8,13 @@ from threading import Lock, Thread
 from typing import List, Optional, Set, Tuple
 
 import requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case, func, or_
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
+from werkzeug.datastructures import FileStorage
+from werkzeug.utils import secure_filename
 
 from scrapers import BaseScraper, ScraperResult, get_scraper_manager
 
@@ -24,6 +27,8 @@ _ENV_TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["PROFILE_UPLOAD_FOLDER"] = os.path.join(app.static_folder, "uploads")
+app.config["ALLOWED_AVATAR_EXTENSIONS"] = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 db = SQLAlchemy(app)
 
@@ -40,6 +45,48 @@ MOVIE_RUNTIME_CACHE: dict[int, Optional[int]] = {}
 MOVIE_RUNTIME_CACHE_LOCK = Lock()
 
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/"
+
+PROFILE_AVATAR_BASENAME = "profile_avatar"
+
+
+def _ensure_profile_upload_folder() -> str:
+    upload_folder = app.config["PROFILE_UPLOAD_FOLDER"]
+    os.makedirs(upload_folder, exist_ok=True)
+    return upload_folder
+
+
+def _find_existing_avatar_file() -> Optional[str]:
+    upload_folder = _ensure_profile_upload_folder()
+    pattern = os.path.join(upload_folder, f"{PROFILE_AVATAR_BASENAME}.*")
+    files = sorted(glob.glob(pattern))
+    for file_path in files:
+        if os.path.isfile(file_path):
+            return file_path
+    return None
+
+
+def _delete_existing_avatar_file(exclude: Optional[str] = None) -> None:
+    upload_folder = _ensure_profile_upload_folder()
+    pattern = os.path.join(upload_folder, f"{PROFILE_AVATAR_BASENAME}.*")
+    exclude_normalized = os.path.abspath(exclude) if exclude else None
+    for file_path in glob.glob(pattern):
+        try:
+            if exclude_normalized and os.path.abspath(file_path) == exclude_normalized:
+                continue
+            os.remove(file_path)
+        except OSError:
+            continue
+
+
+def _build_avatar_url(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    try:
+        relative_path = os.path.relpath(path, app.static_folder)
+    except ValueError:
+        return None
+    relative_path = relative_path.replace(os.sep, "/")
+    return url_for("static", filename=relative_path)
 
 
 def build_image_url(path: Optional[str], size: str = "w185") -> Optional[str]:
@@ -175,11 +222,16 @@ def get_user_profile() -> dict[str, object]:
         profile_model.name, profile_model.email
     )
 
+    avatar_file = _find_existing_avatar_file()
+    avatar_image_url = _build_avatar_url(avatar_file)
+
     profile: dict[str, object] = {
         "name": profile_model.name or "",
         "role": profile_model.role or "",
         "avatar_initials": display_initials,
         "avatar_initials_value": profile_model.avatar_initials or "",
+        "avatar_image_url": avatar_image_url,
+        "has_avatar_image": bool(avatar_image_url),
         "email": profile_model.email or "",
         "location": profile_model.location or "",
         "membership_since_display": membership_since_display,
@@ -269,7 +321,9 @@ def record_user_view_event(content_type: str, object_id: int) -> bool:
         return False
 
 
-def update_user_profile_from_form(form_data: dict[str, str]) -> tuple[bool, Optional[str]]:
+def update_user_profile_from_form(
+    form_data: dict[str, str], avatar_file: Optional[FileStorage] = None
+) -> tuple[bool, Optional[str]]:
     profile = get_or_create_user_profile_model()
 
     def _clean(value: Optional[str]) -> Optional[str]:
@@ -290,6 +344,32 @@ def update_user_profile_from_form(form_data: dict[str, str]) -> tuple[bool, Opti
 
     favorite_genres = _parse_favorite_genres(form_data.get("favorite_genres"))
     profile.favorite_genres = _serialize_favorite_genres(favorite_genres)
+
+    remove_avatar_value = (form_data.get("remove_avatar") or "").strip().lower()
+    remove_avatar_requested = remove_avatar_value in {"1", "true", "on", "yes"}
+
+    if avatar_file and avatar_file.filename:
+        filename = secure_filename(avatar_file.filename)
+        _, ext = os.path.splitext(filename)
+        ext = ext.lower()
+        allowed_extensions = app.config.get("ALLOWED_AVATAR_EXTENSIONS", set())
+        if ext not in allowed_extensions:
+            return (
+                False,
+                "Das Profilbild muss als PNG, JPG, JPEG, WEBP oder GIF hochgeladen werden.",
+            )
+
+        upload_folder = _ensure_profile_upload_folder()
+        target_filename = f"{secure_filename(PROFILE_AVATAR_BASENAME)}{ext}"
+        target_path = os.path.join(upload_folder, target_filename)
+        try:
+            avatar_file.save(target_path)
+        except OSError:
+            return False, "Das Profilbild konnte nicht gespeichert werden."
+        _delete_existing_avatar_file(exclude=target_path)
+        remove_avatar_requested = False
+    elif remove_avatar_requested:
+        _delete_existing_avatar_file()
 
     membership_value = (form_data.get("membership_since") or "").strip()
     if membership_value:
@@ -2305,7 +2385,7 @@ def build_library_context() -> dict:
 
     scraped = StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
 
-    hero_movies = popular_movies[:5]
+    hero_movies: List[Movie] = []
 
     total_movies = db.session.query(func.count(Movie.id)).filter(valid_filter).scalar() or 0
     latest_movie = recent_movies[0] if recent_movies else None
@@ -2338,6 +2418,13 @@ def build_library_context() -> dict:
             )
             now_playing_movies.sort(key=lambda movie: order_mapping.get(movie.tmdb_id, len(order_mapping)))
 
+    if now_playing_movies:
+        hero_movies = now_playing_movies[:5]
+    elif recent_movies:
+        hero_movies = recent_movies[:5]
+    else:
+        hero_movies = popular_movies[:5]
+
     return {
         "categories": categories,
         "film_sections": film_sections,
@@ -2367,13 +2454,15 @@ def profile_view():
     error_message: Optional[str] = None
     if request.method == "POST":
         form_payload = request.form.to_dict(flat=True)
-        saved, message = update_user_profile_from_form(form_payload)
+        avatar_file = request.files.get("avatar_image")
+        saved, message = update_user_profile_from_form(form_payload, avatar_file)
         if saved:
             success_message = "Profil wurde aktualisiert."
         else:
             error_message = message or "Profil konnte nicht gespeichert werden."
 
     profile = get_user_profile()
+    profile_form_open = bool(error_message)
     return render_template(
         "profile.html",
         active_page="profile",
@@ -2381,6 +2470,7 @@ def profile_view():
         user_profile=profile,
         profile_message=success_message,
         profile_error=error_message,
+        profile_form_open=profile_form_open,
     )
 
 
