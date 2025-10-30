@@ -27,6 +27,23 @@
                 <span>Zu den Bereichen</span>
             </a>
         </div>
+        {% if movie_genres %}
+        <div class="film-hero__genres">
+            <span class="film-hero__genres-label">Genres</span>
+            <div class="film-hero__genres-list">
+                {% for genre in movie_genres %}
+                <a
+                    href="{{ url_for('filme_all', genre=genre.name) }}"
+                    class="chip chip--light"
+                    data-navigation="route"
+                >
+                    <span>{{ genre.name }}</span>
+                    <span class="chip__count">{{ genre.movie_count }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
     <div class="film-hero__metrics">
         <div class="film-metric">
