@@ -136,6 +136,17 @@ def set_scraper_setting(provider: str, suffix: str, value: int) -> None:
     set_setting(_scraper_setting_key(provider, suffix), str(value))
 
 
+def _get_scraper_categories(scraper: BaseScraper) -> Tuple[str, ...]:
+    categories = getattr(scraper, "content_categories", ("movies",))
+    if isinstance(categories, str):
+        categories = (categories,)
+    return tuple(
+        category.lower()
+        for category in categories
+        if isinstance(category, str) and category
+    )
+
+
 def _default_scraper_status(provider: str, label: str) -> dict:
     return {
         "provider": provider,
@@ -151,6 +162,7 @@ def _default_scraper_status(provider: str, label: str) -> dict:
         "last_title": None,
         "message": "Bereit.",
         "error": None,
+        "content_scope": None,
         "started_at": None,
         "finished_at": None,
         "last_update": None,
@@ -596,7 +608,9 @@ def get_scraper_status(provider: Optional[str] = None) -> dict:
     return statuses
 
 
-def _start_scraper(provider: str, start_page: int) -> bool:
+def _start_scraper(
+    provider: str, start_page: int, *, include_series: bool = False
+) -> bool:
     _initialize_scraper_state(provider)
 
     now_iso = _now_iso()
@@ -604,6 +618,17 @@ def _start_scraper(provider: str, start_page: int) -> bool:
     if scraper is None:
         _append_scraper_log(provider, f"Unbekannter Scraper: {provider}", "error")
         return False
+
+    categories = _get_scraper_categories(scraper)
+    scope_label = (
+        "Filme & Serien" if include_series and "series" in categories else None
+    )
+    scope_suffix = f" ({scope_label})" if scope_label else ""
+    start_message = (
+        f"{scraper.label}: {scope_label} werden vorbereitet…"
+        if scope_label
+        else f"{scraper.label}: Scraper wird gestartet…"
+    )
 
     with SCRAPER_STATUS_LOCK:
         existing_thread = SCRAPER_THREADS.get(provider)
@@ -621,8 +646,9 @@ def _start_scraper(provider: str, start_page: int) -> bool:
                 "processed_pages": 0,
                 "processed_links": 0,
                 "last_title": None,
-                "message": "Scraper wird gestartet…",
+                "message": start_message,
                 "error": None,
+                "content_scope": scope_label,
                 "started_at": now_iso,
                 "finished_at": None,
                 "last_update": now_iso,
@@ -632,12 +658,12 @@ def _start_scraper(provider: str, start_page: int) -> bool:
 
     _append_scraper_log(
         provider,
-        f"{scraper.label}-Scraper gestartet (ab Seite {start_page}).",
+        f"{scraper.label}-Scraper gestartet{scope_suffix} (ab Seite {start_page}).",
     )
 
     thread = Thread(
         target=_run_scraper,
-        args=(provider, start_page),
+        args=(provider, start_page, include_series),
         daemon=True,
     )
     with SCRAPER_STATUS_LOCK:
@@ -646,7 +672,7 @@ def _start_scraper(provider: str, start_page: int) -> bool:
     return True
 
 
-def _run_scraper(provider: str, start_page: int) -> None:
+def _run_scraper(provider: str, start_page: int, include_series: bool = False) -> None:
     processed_links = 0
     processed_pages = 0
     page = start_page
@@ -664,18 +690,23 @@ def _run_scraper(provider: str, start_page: int) -> None:
         )
         return
     provider_label = scraper.label
+    categories = _get_scraper_categories(scraper)
+    scope_label = "Filme & Serien" if include_series and "series" in categories else None
+    scope_log_suffix = f" ({scope_label})" if scope_label else ""
+    scope_message_suffix = f" · {scope_label}" if scope_label else ""
 
     try:
         with app.app_context():
             while True:
                 _append_scraper_log(
-                    provider, f"[{provider_label}] Seite {page} wird geladen…"
+                    provider,
+                    f"[{provider_label}{scope_log_suffix}] Seite {page} wird geladen…",
                 )
                 _set_scraper_status(
                     provider,
                     current_page=page,
                     next_page=page,
-                    message=f"{provider_label}: Seite {page} wird geladen…",
+                    message=f"{provider_label}: Seite {page} wird geladen{scope_message_suffix}…",
                     error=None,
                 )
 
@@ -684,7 +715,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     _set_scraper_status(
                         provider,
                         last_title=title,
-                        message=f"{provider_label}: Gefunden {title}",
+                        message=f"{provider_label}: Gefunden {title}{scope_message_suffix}",
                         current_page=page,
                     )
 
@@ -724,12 +755,12 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     set_scraper_setting(provider, "next_page", 1)
                     _append_scraper_log(
                         provider,
-                        f"[{provider_label}] Keine weiteren Einträge gefunden. Scraper beendet.",
+                        f"[{provider_label}{scope_log_suffix}] Keine weiteren Einträge gefunden. Scraper beendet.",
                         "success",
                     )
                     _set_scraper_status(
                         provider,
-                        message=f"{provider_label}: Keine weiteren Einträge gefunden.",
+                        message=f"{provider_label}: Keine weiteren Einträge gefunden{scope_message_suffix}.",
                         last_title=None,
                         current_page=page,
                         next_page=1,
@@ -742,7 +773,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                     _set_scraper_status(
                         provider,
                         last_title=title,
-                        message=f"{provider_label}: Speichere {title}",
+                        message=f"{provider_label}: Speichere {title}{scope_message_suffix}",
                         error=None,
                     )
                     try:
@@ -833,7 +864,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                 _set_scraper_status(
                     provider,
                     running=False,
-                    message=f"{provider_label}: Alle Seiten verarbeitet.",
+                    message=f"{provider_label}: Alle Seiten verarbeitet{scope_message_suffix}.",
                     finished_at=_now_iso(),
                     current_page=last_completed_page or page,
                     next_page=1,
@@ -843,7 +874,7 @@ def _run_scraper(provider: str, start_page: int) -> None:
                 )
                 _append_scraper_log(
                     provider,
-                    f"[{provider_label}] Scraper abgeschlossen. Verarbeitete Seiten: {processed_pages}, neue Links: {processed_links}.",
+                    f"[{provider_label}{scope_log_suffix}] Scraper abgeschlossen. Verarbeitete Seiten: {processed_pages}, neue Links: {processed_links}.",
                     "success",
                 )
     finally:
@@ -1051,6 +1082,16 @@ def scraper_view():
     context = build_library_context()
     providers = SCRAPER_MANAGER.available_providers()
     context["scraper_providers"] = providers
+    context["movie_scraper_providers"] = [
+        provider
+        for provider in providers
+        if "movies" in _get_scraper_categories(provider)
+    ]
+    context["series_scraper_providers"] = [
+        provider
+        for provider in providers
+        if "series" in _get_scraper_categories(provider)
+    ]
     context["scraper_statuses"] = get_scraper_status()
     context["scraper_settings"] = {
         provider.name: {
@@ -1243,6 +1284,8 @@ def api_scrape_provider(provider: str):
         return jsonify({"success": False, "message": "Unbekannter Scraper."}), 404
 
     data = request.get_json(silent=True) or {}
+    include_series = bool(data.get("include_series"))
+    stored_next_page = get_scraper_int_setting(provider, "next_page", 1)
     start_page = data.get("from_page") or data.get("start_page")
     if start_page is not None:
         try:
@@ -1254,13 +1297,31 @@ def api_scrape_provider(provider: str):
         set_scraper_setting(provider, "next_page", start_page)
         set_scraper_setting(provider, "last_page", max(0, start_page - 1))
     else:
-        start_page = get_scraper_int_setting(provider, "next_page", 1)
+        start_page = stored_next_page
 
-    started = _start_scraper(provider, start_page)
+    if include_series and provider == "filmpalast" and stored_next_page <= 1 and start_page <= 1:
+        start_page = 1
+        set_scraper_setting(provider, "next_page", start_page)
+        set_scraper_setting(provider, "last_page", 0)
+        _append_scraper_log(
+            provider,
+            "[Filmpalast] Serienmodus aktiviert: Starte Filme & Serien ab Seite 1.",
+        )
+
+    started = _start_scraper(provider, start_page, include_series=include_series)
     status = get_scraper_status()
-    message = (
-        f"{scraper.label}-Scraper gestartet." if started else f"{scraper.label}-Scraper läuft bereits."
-    )
+    if include_series and provider == "filmpalast":
+        message = (
+            f"{scraper.label}-Scraper für Filme & Serien gestartet."
+            if started
+            else f"{scraper.label}-Scraper für Filme & Serien läuft bereits."
+        )
+    else:
+        message = (
+            f"{scraper.label}-Scraper gestartet."
+            if started
+            else f"{scraper.label}-Scraper läuft bereits."
+        )
     started_map = {provider: started}
     return jsonify(
         {

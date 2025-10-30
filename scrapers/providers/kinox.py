@@ -15,6 +15,7 @@ class KinoxScraper(BaseScraper):
 
     name = "kinox"
     label = "Kinox"
+    content_categories = ("movies",)
 
     BASE_URL = "https://kinox.farm/kinofilme-online/page/{page}/"
     SELECTOR_TITLE = "div.short-entry-title a"

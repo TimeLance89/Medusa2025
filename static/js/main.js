@@ -46,14 +46,22 @@ const searchOverlayClose = document.getElementById('searchOverlayClose');
 const scraperStartAllButton = document.getElementById('scraperStartAll');
 const scraperPanels = Array.from(document.querySelectorAll('[data-scraper-panel]'));
 const scraperControllers = new Map();
+const scraperControllersByProvider = new Map();
 
 scraperPanels.forEach((panel) => {
   const provider = panel.dataset.provider;
   if (!provider) {
     return;
   }
-  scraperControllers.set(provider, {
+  const id = panel.dataset.scraperId || provider;
+  const mode = panel.dataset.scraperMode || 'default';
+  const startPageValue = Number(panel.dataset.startPage);
+  const startPage = Number.isFinite(startPageValue) ? startPageValue : null;
+  const controller = {
+    id,
     provider,
+    mode,
+    startPage,
     panel,
     message: panel.querySelector('[data-role="scraper-message"]'),
     state: panel.querySelector('[data-role="scraper-state"]'),
@@ -66,7 +74,13 @@ scraperPanels.forEach((panel) => {
     log: panel.querySelector('[data-role="scraper-log"]'),
     startButton: panel.querySelector('[data-action="start-scraper"]'),
     refreshButton: panel.querySelector('[data-action="refresh-scraper"]'),
-  });
+  };
+
+  scraperControllers.set(id, controller);
+  if (!scraperControllersByProvider.has(provider)) {
+    scraperControllersByProvider.set(provider, []);
+  }
+  scraperControllersByProvider.get(provider).push(controller);
 });
 
 const scraperLastPageLabels = new Map();
@@ -802,6 +816,7 @@ function normalizeScraperStatus(raw, provider = '') {
     last_title: '',
     message: 'Bereit.',
     error: null,
+    content_scope: null,
     started_at: null,
     finished_at: null,
     last_update: null,
@@ -846,7 +861,7 @@ function normalizeScraperStatus(raw, provider = '') {
 
 function normalizeScraperStatuses(rawStatuses) {
   const normalized = {};
-  scraperControllers.forEach((_, provider) => {
+  scraperControllersByProvider.forEach((_, provider) => {
     normalized[provider] = normalizeScraperStatus(rawStatuses?.[provider], provider);
   });
   Object.keys(rawStatuses || {}).forEach((provider) => {
@@ -857,18 +872,34 @@ function normalizeScraperStatuses(rawStatuses) {
   return normalized;
 }
 
-async function startScraper(provider) {
-  if (!provider) return;
-  const controller = scraperControllers.get(provider);
-  const buttonsToDisable = [topbarScrapeButton, scraperStartAllButton, controller?.startButton].filter(Boolean);
+async function startScraper(controllerId) {
+  if (!controllerId) return;
+  const controller = scraperControllers.get(controllerId);
+  if (!controller) return;
+
+  const provider = controller.provider;
+  const providerControllers = scraperControllersByProvider.get(provider) || [];
+  const providerButtons = providerControllers.map((item) => item.startButton).filter(Boolean);
+  const buttonsToDisable = [topbarScrapeButton, scraperStartAllButton, ...providerButtons].filter(Boolean);
   setButtonsDisabled(buttonsToDisable, true);
   try {
     const label = controller?.panel?.querySelector('h2')?.textContent || 'Scraper';
     showToast(`${label} wird gestartet...`);
+    const payload = {};
+    if (controller.mode === 'series') {
+      payload.include_series = true;
+      const status = currentScraperStatuses[provider];
+      const nextPage = Number(status?.next_page);
+      if (!Number.isFinite(nextPage) || nextPage <= 1) {
+        payload.start_page = 1;
+      }
+    } else if (Number.isFinite(controller.startPage)) {
+      payload.start_page = controller.startPage;
+    }
     const response = await callApi(`/api/scrape/${provider}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify(payload),
     });
     if (response?.success) {
       const anyRunning = updateScraperStatusUI(response.status);
@@ -997,9 +1028,9 @@ function renderScraperStatusLog(controller, entries) {
 }
 
 function updateStartButtonsDisabled() {
-  scraperControllers.forEach((controller, provider) => {
+  scraperControllers.forEach((controller) => {
     if (!controller.startButton) return;
-    controller.startButton.disabled = Boolean(currentScraperStatuses[provider]?.running);
+    controller.startButton.disabled = Boolean(currentScraperStatuses[controller.provider]?.running);
   });
 }
 
@@ -1013,6 +1044,11 @@ function updateSingleScraperUI(controller, status) {
 
   if (controller.panel) {
     controller.panel.dataset.running = status.running ? 'true' : 'false';
+    if (status.content_scope) {
+      controller.panel.dataset.contentScope = status.content_scope;
+    } else {
+      delete controller.panel.dataset.contentScope;
+    }
   }
   if (controller.message) {
     controller.message.textContent = message;
@@ -1103,9 +1139,11 @@ function updateScraperStatusUI(statuses) {
   currentScraperStatuses = normalized;
 
   let anyRunning = false;
-  scraperControllers.forEach((controller, provider) => {
+  scraperControllersByProvider.forEach((controllers, provider) => {
     const status = normalized[provider] || normalizeScraperStatus(null, provider);
-    updateSingleScraperUI(controller, status);
+    controllers.forEach((controller) => {
+      updateSingleScraperUI(controller, status);
+    });
     if (status.running) {
       anyRunning = true;
     }
@@ -1168,11 +1206,11 @@ function initScraperStatus() {
   if (!scraperControllers.size) return;
 
   const initialStatuses = {};
-  scraperControllers.forEach((controller, provider) => {
+  scraperControllers.forEach((controller) => {
     try {
       const raw = controller.panel.dataset.initialStatus;
-      if (raw) {
-        initialStatuses[provider] = JSON.parse(raw);
+      if (raw && !initialStatuses[controller.provider]) {
+        initialStatuses[controller.provider] = JSON.parse(raw);
       }
     } catch (error) {
       console.error(error);
@@ -1492,8 +1530,8 @@ function bindButtons() {
   syncButton?.addEventListener('click', syncTmdb);
   topbarScrapeButton?.addEventListener('click', startAllScrapers);
   scraperStartAllButton?.addEventListener('click', startAllScrapers);
-  scraperControllers.forEach((controller, provider) => {
-    controller.startButton?.addEventListener('click', () => startScraper(provider));
+  scraperControllers.forEach((controller) => {
+    controller.startButton?.addEventListener('click', () => startScraper(controller.id));
     controller.refreshButton?.addEventListener('click', () => {
       fetchScraperStatus({ manual: true }).then(() => ensureScraperStatusPolling());
     });
