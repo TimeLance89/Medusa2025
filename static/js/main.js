@@ -369,9 +369,9 @@ function renderStreamingLinks(streamingLinks, { onSelect } = {}) {
 
   const fallback = document.createElement('a');
   fallback.classList.add('stream-preview__external');
-  fallback.target = '_self';
-  fallback.rel = 'noopener';
-  fallback.textContent = 'Im aktuellen Tab öffnen';
+  fallback.target = '_blank';
+  fallback.rel = 'noopener noreferrer';
+  fallback.textContent = 'In neuem Tab öffnen';
 
   const previewNote = document.createElement('p');
   previewNote.classList.add('stream-preview__note');
@@ -451,7 +451,7 @@ function renderStreamingLinks(streamingLinks, { onSelect } = {}) {
     fallback.href = link.url;
     fallback.removeAttribute('aria-disabled');
     fallback.removeAttribute('tabindex');
-    fallback.setAttribute('aria-label', `Stream ${labelText} im aktuellen Tab öffnen`);
+    fallback.setAttribute('aria-label', `Stream ${labelText} in neuem Tab öffnen`);
     applyWatchButtonLink(link, index);
     if (typeof onSelect === 'function') {
       onSelect(link, index);
@@ -2828,7 +2828,7 @@ watchButton?.addEventListener('click', () => {
   }
   const streamUrl = watchButton.dataset.streamUrl;
   if (streamUrl) {
-    window.location.assign(streamUrl);
+    window.open(streamUrl, '_blank', 'noopener,noreferrer');
   } else if (detailStreaming) {
     detailStreaming.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
