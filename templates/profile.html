@@ -19,7 +19,11 @@
         {% endif %}
         <div class="profile-hero__header">
             <div class="profile-hero__avatar" role="img" aria-label="Profilbild">
-                <span>{{ user_profile.avatar_initials or '--' }}</span>
+                {% if user_profile.avatar_image_url %}
+                    <img src="{{ user_profile.avatar_image_url }}" alt="Profilbild von {{ user_profile.name or 'dir' }}" loading="lazy" />
+                {% else %}
+                    <span>{{ user_profile.avatar_initials or '--' }}</span>
+                {% endif %}
             </div>
             <div class="profile-hero__identity">
                 <h1>{{ user_profile.name or 'Profil ohne Namen' }}</h1>
@@ -54,6 +58,18 @@
                 <span>{{ user_profile.email or 'Keine E-Mail hinterlegt' }}</span>
             </li>
         </ul>
+        <div class="profile-hero__actions">
+            <button
+                type="button"
+                class="btn btn-secondary"
+                data-action="toggle-profile-edit"
+                aria-controls="profileEditPanel"
+                aria-expanded="{{ 'true' if profile_form_open|default(false) else 'false' }}"
+            >
+                <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+                <span>Profil bearbeiten</span>
+            </button>
+        </div>
         <div class="profile-stats" role="list" aria-label="Profilstatistiken">
             <div class="profile-stat" role="listitem">
                 <span class="profile-stat__label">Zuletzt angesehen</span>
@@ -81,48 +97,82 @@
             <p>Aktualisiere hier deine persönlichen Angaben und Vorlieben.</p>
         </div>
     </header>
-    <form method="post" class="profile-form" novalidate>
-        <div class="profile-form__grid">
-            <label class="profile-form__field" for="profileName">
-                <span>Name</span>
-                <input id="profileName" type="text" name="name" value="{{ user_profile.name }}" placeholder="Dein Name" />
-            </label>
-            <label class="profile-form__field" for="profileRole">
-                <span>Rolle / Titel</span>
-                <input id="profileRole" type="text" name="role" value="{{ user_profile.role }}" placeholder="z.&nbsp;B. Serienfan" />
-            </label>
-            <label class="profile-form__field" for="profileAvatar">
-                <span>Avatar-Kürzel</span>
-                <input id="profileAvatar" type="text" name="avatar_initials" value="{{ user_profile.avatar_initials_value }}" maxlength="4" placeholder="Initialen" />
-            </label>
-            <label class="profile-form__field" for="profileEmail">
-                <span>E-Mail-Adresse</span>
-                <input id="profileEmail" type="email" name="email" value="{{ user_profile.email }}" placeholder="name@example.com" />
-            </label>
-            <label class="profile-form__field" for="profileLocation">
-                <span>Ort</span>
-                <input id="profileLocation" type="text" name="location" value="{{ user_profile.location }}" placeholder="Stadt, Land" />
-            </label>
-            <label class="profile-form__field" for="profileMemberSince">
-                <span>Mitglied seit</span>
-                <input id="profileMemberSince" type="date" name="membership_since" value="{{ user_profile.membership_since_value }}" />
-            </label>
-            <label class="profile-form__field profile-form__field--full" for="profileGenres">
-                <span>Lieblingsgenres (Kommagetrennt)</span>
-                <input id="profileGenres" type="text" name="favorite_genres" value="{{ user_profile.favorite_genres | join(', ') }}" placeholder="Drama, Thriller, Komödie" />
-            </label>
-            <label class="profile-form__field profile-form__field--full" for="profileBio">
-                <span>Über dich</span>
-                <textarea id="profileBio" name="bio" rows="4" placeholder="Was macht dein Streaming-Profil aus?">{{ user_profile.bio }}</textarea>
-            </label>
-        </div>
-        <div class="profile-form__actions">
-            <button type="submit" class="btn btn-primary">
-                <span class="material-symbols-outlined" aria-hidden="true">save</span>
-                <span>Änderungen speichern</span>
-            </button>
-        </div>
-    </form>
+    <div
+        id="profileEditPanel"
+        class="profile-form-wrapper"
+        data-profile-form
+        data-open="{{ 'true' if profile_form_open|default(false) else 'false' }}"
+        {% if not profile_form_open|default(false) %}hidden{% endif %}
+    >
+        <form method="post" class="profile-form" enctype="multipart/form-data" novalidate>
+            <div class="profile-form__grid">
+                <label class="profile-form__field" for="profileName">
+                    <span>Name</span>
+                    <input id="profileName" type="text" name="name" value="{{ user_profile.name }}" placeholder="Dein Name" />
+                </label>
+                <label class="profile-form__field" for="profileRole">
+                    <span>Rolle / Titel</span>
+                    <input id="profileRole" type="text" name="role" value="{{ user_profile.role }}" placeholder="z.&nbsp;B. Serienfan" />
+                </label>
+                <label class="profile-form__field" for="profileAvatar">
+                    <span>Avatar-Kürzel</span>
+                    <input id="profileAvatar" type="text" name="avatar_initials" value="{{ user_profile.avatar_initials_value }}" maxlength="4" placeholder="Initialen" />
+                </label>
+                <label class="profile-form__field" for="profileEmail">
+                    <span>E-Mail-Adresse</span>
+                    <input id="profileEmail" type="email" name="email" value="{{ user_profile.email }}" placeholder="name@example.com" />
+                </label>
+                <label class="profile-form__field" for="profileLocation">
+                    <span>Ort</span>
+                    <input id="profileLocation" type="text" name="location" value="{{ user_profile.location }}" placeholder="Stadt, Land" />
+                </label>
+                <label class="profile-form__field" for="profileMemberSince">
+                    <span>Mitglied seit</span>
+                    <input id="profileMemberSince" type="date" name="membership_since" value="{{ user_profile.membership_since_value }}" />
+                </label>
+                <label class="profile-form__field profile-form__field--file profile-form__field--full" for="profileAvatarImage">
+                    <span>Profilbild</span>
+                    <input id="profileAvatarImage" type="file" name="avatar_image" accept="image/*" />
+                    <span class="profile-form__hint">
+                        {% if user_profile.avatar_image_url %}
+                            Aktuelles Bild bleibt erhalten, wenn du kein neues auswählst.
+                        {% else %}
+                            Lade ein Bild hoch, um dein Profil hervorzuheben.
+                        {% endif %}
+                    </span>
+                    {% if user_profile.avatar_image_url %}
+                        <div class="profile-form__preview" aria-hidden="true">
+                            <img src="{{ user_profile.avatar_image_url }}" alt="Aktuelles Profilbild" loading="lazy" />
+                        </div>
+                    {% endif %}
+                </label>
+                {% if user_profile.avatar_image_url %}
+                    <label class="profile-form__toggle profile-form__field--full" for="profileRemoveAvatar">
+                        <input id="profileRemoveAvatar" type="checkbox" name="remove_avatar" value="1" />
+                        <span>Aktuelles Profilbild entfernen</span>
+                    </label>
+                {% endif %}
+                <label class="profile-form__field profile-form__field--full" for="profileGenres">
+                    <span>Lieblingsgenres (Kommagetrennt)</span>
+                    <input id="profileGenres" type="text" name="favorite_genres" value="{{ user_profile.favorite_genres | join(', ') }}" placeholder="Drama, Thriller, Komödie" />
+                </label>
+                <label class="profile-form__field profile-form__field--full" for="profileBio">
+                    <span>Über dich</span>
+                    <textarea id="profileBio" name="bio" rows="4" placeholder="Was macht dein Streaming-Profil aus?">{{ user_profile.bio }}</textarea>
+                </label>
+            </div>
+            <div class="profile-form__actions">
+                <button type="submit" class="btn btn-primary">
+                    <span class="material-symbols-outlined" aria-hidden="true">save</span>
+                    <span>Änderungen speichern</span>
+                </button>
+                <button type="button" class="btn btn-ghost" data-action="cancel-profile-edit">
+                    <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                    <span>Abbrechen</span>
+                </button>
+            </div>
+        </form>
+    </div>
 </section>
 
 <section class="surface profile-section">

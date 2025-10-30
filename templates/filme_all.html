@@ -109,15 +109,24 @@
             <p class="section-subtitle">Blättere seitenweise durch deine komplette Filmsammlung.</p>
         </div>
         <div class="detail-pagination">
-            <button type="button" id="detailAllPrev" class="rail-button" aria-label="Vorherige Seite">
+            <button type="button" id="detailAllPrev" class="rail-button" aria-label="Vorherige Seite" data-role="detailAllPrev">
                 <span class="material-symbols-outlined">chevron_left</span>
             </button>
-            <span id="detailAllPageLabel" class="detail-page-label"></span>
-            <button type="button" id="detailAllNext" class="rail-button" aria-label="Nächste Seite">
+            <span id="detailAllPageLabel" class="detail-page-label" data-role="detailAllPageLabel"></span>
+            <button type="button" id="detailAllNext" class="rail-button" aria-label="Nächste Seite" data-role="detailAllNext">
                 <span class="material-symbols-outlined">chevron_right</span>
             </button>
         </div>
     </header>
     <div id="detailAllMovies" class="detail-grid collection-all__grid"></div>
+    <div class="detail-pagination detail-pagination--static">
+        <button type="button" class="rail-button" aria-label="Vorherige Seite" data-role="detailAllPrev">
+            <span class="material-symbols-outlined">chevron_left</span>
+        </button>
+        <span class="detail-page-label" data-role="detailAllPageLabel"></span>
+        <button type="button" class="rail-button" aria-label="Nächste Seite" data-role="detailAllNext">
+            <span class="material-symbols-outlined">chevron_right</span>
+        </button>
+    </div>
 </section>
 {% endblock %}

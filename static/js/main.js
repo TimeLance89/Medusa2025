@@ -21,9 +21,15 @@ const detailBackButton = detailPanel?.querySelector('.detail-back');
 const watchButton = document.getElementById('detailWatch');
 const trailerButton = document.getElementById('detailTrailerButton');
 const detailAllMoviesGrid = document.getElementById('detailAllMovies');
-const detailAllPageLabel = document.getElementById('detailAllPageLabel');
-const detailAllPrev = document.getElementById('detailAllPrev');
-const detailAllNext = document.getElementById('detailAllNext');
+const detailAllPageLabels = Array.from(
+  document.querySelectorAll('[data-role="detailAllPageLabel"]')
+);
+const detailAllPrevButtons = Array.from(
+  document.querySelectorAll('[data-role="detailAllPrev"]')
+);
+const detailAllNextButtons = Array.from(
+  document.querySelectorAll('[data-role="detailAllNext"]')
+);
 const trailerModal = document.getElementById('trailerModal');
 const trailerModalFrame = document.getElementById('trailerModalFrame');
 const trailerModalTitle = document.getElementById('trailerModalTitle');
@@ -50,6 +56,13 @@ const searchOverlayMeta = document.getElementById('searchOverlayMeta');
 const searchOverlayList = document.getElementById('searchOverlayList');
 const searchOverlayEmpty = document.getElementById('searchOverlayEmpty');
 const searchOverlayClose = document.getElementById('searchOverlayClose');
+const profileFormWrapper = document.querySelector('[data-profile-form]');
+const profileEditToggles = Array.from(
+  document.querySelectorAll('[data-action="toggle-profile-edit"]')
+);
+const profileEditCancelButtons = Array.from(
+  document.querySelectorAll('[data-action="cancel-profile-edit"]')
+);
 const scraperStartAllButton = document.getElementById('scraperStartAll');
 const scraperPanels = Array.from(document.querySelectorAll('[data-scraper-panel]'));
 const scraperControllers = new Map();
@@ -2271,27 +2284,27 @@ function updateAllMoviesControls() {
   const movies = getSortedMovies();
   const totalPages = getAllMoviesTotalPages();
 
-  if (detailAllPageLabel) {
+  detailAllPageLabels.forEach((label) => {
     if (allMoviesLoading) {
-      detailAllPageLabel.textContent = 'Lädt…';
+      label.textContent = 'Lädt…';
     } else if (allMoviesSorting) {
-      detailAllPageLabel.textContent = 'Sortiert…';
+      label.textContent = 'Sortiert…';
     } else if (!movies.length) {
-      detailAllPageLabel.textContent = 'Keine Inhalte';
+      label.textContent = 'Keine Inhalte';
     } else {
-      detailAllPageLabel.textContent = `Seite ${allMoviesPage} / ${totalPages}`;
+      label.textContent = `Seite ${allMoviesPage} / ${totalPages}`;
     }
-  }
+  });
 
   const disableControls =
     allMoviesLoading || allMoviesSorting || !movies.length || totalPages <= 1;
 
-  if (detailAllPrev) {
-    detailAllPrev.disabled = disableControls || allMoviesPage <= 1;
-  }
-  if (detailAllNext) {
-    detailAllNext.disabled = disableControls || allMoviesPage >= totalPages;
-  }
+  detailAllPrevButtons.forEach((button) => {
+    button.disabled = disableControls || allMoviesPage <= 1;
+  });
+  detailAllNextButtons.forEach((button) => {
+    button.disabled = disableControls || allMoviesPage >= totalPages;
+  });
 }
 
 function getMovieRuntime(movie) {
@@ -2664,6 +2677,40 @@ function changeAllMoviesPage(offset) {
   detailAllMoviesGrid.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function setProfileFormVisibility(visible, options = {}) {
+  if (!profileFormWrapper) {
+    return;
+  }
+
+  const { scroll = true } = options;
+  profileFormWrapper.hidden = !visible;
+  profileFormWrapper.dataset.open = visible ? 'true' : 'false';
+
+  profileEditToggles.forEach((toggle) => {
+    toggle.setAttribute('aria-expanded', visible ? 'true' : 'false');
+  });
+
+  if (visible) {
+    if (scroll) {
+      profileFormWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    const firstField = profileFormWrapper.querySelector('input, textarea, select');
+    if (firstField) {
+      window.requestAnimationFrame(() => {
+        firstField.focus();
+      });
+    }
+  }
+}
+
+function toggleProfileFormVisibility() {
+  if (!profileFormWrapper) {
+    return;
+  }
+  const isOpen = profileFormWrapper.dataset.open === 'true';
+  setProfileFormVisibility(!isOpen);
+}
+
 function initAllMoviesSort() {
   if (!allMoviesSortButtons?.length) {
     return;
@@ -2841,9 +2888,9 @@ function showDetailLoadingState() {
     loading.textContent = 'Filme werden geladen…';
     detailAllMoviesGrid.appendChild(loading);
   }
-  if (detailAllPageLabel) {
-    detailAllPageLabel.textContent = 'Lädt…';
-  }
+  detailAllPageLabels.forEach((label) => {
+    label.textContent = 'Lädt…';
+  });
 }
 
 document.addEventListener('keydown', (event) => {
@@ -2874,8 +2921,34 @@ watchButton?.addEventListener('click', () => {
 trailerButton?.addEventListener('click', openTrailerModal);
 trailerModalClose?.addEventListener('click', closeTrailerModal);
 trailerModalBackdrop?.addEventListener('click', closeTrailerModal);
-detailAllPrev?.addEventListener('click', () => changeAllMoviesPage(-1));
-detailAllNext?.addEventListener('click', () => changeAllMoviesPage(1));
+
+if (profileFormWrapper) {
+  const initiallyOpen = profileFormWrapper.dataset.open === 'true';
+  setProfileFormVisibility(initiallyOpen, { scroll: false });
+}
+
+profileEditToggles.forEach((toggle) => {
+  toggle.addEventListener('click', () => {
+    toggleProfileFormVisibility();
+  });
+});
+
+profileEditCancelButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    setProfileFormVisibility(false);
+    const firstToggle = profileEditToggles[0];
+    if (firstToggle) {
+      firstToggle.focus();
+    }
+  });
+});
+
+detailAllPrevButtons.forEach((button) => {
+  button.addEventListener('click', () => changeAllMoviesPage(-1));
+});
+detailAllNextButtons.forEach((button) => {
+  button.addEventListener('click', () => changeAllMoviesPage(1));
+});
 heroPlayButton?.addEventListener('click', () => {
   const movieId = heroPlayButton.dataset.movieId;
   if (movieId) {
