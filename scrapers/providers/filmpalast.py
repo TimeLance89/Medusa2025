@@ -241,10 +241,10 @@ class _FilmpalastBase:
             host_type = self._identify_host_type(streaming_url)
             if host_type is None:
                 continue
-            if host_type not in {"veev", "voe"}:
+            if host_type != "veev":
                 continue
 
-            if host_type == "veev" and host_name and "veev" not in host_name.lower():
+            if host_name and "veev hd" not in host_name.lower():
                 continue
             if not self._is_stream_online(streaming_url, host_type):
                 continue
