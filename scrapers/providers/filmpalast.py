@@ -23,6 +23,11 @@ class FilmpalastScraper(BaseScraper):
     SELECTOR_TITLE = "h2.rb > a.rb"
     VOE_HOSTNAME = "voe.sx"
     VEEV_HOSTNAME = "veev.to"
+    GENERIC_HOSTNAMES = (
+        "savefiles.com",
+        "bigwarp.pro",
+        "strmup.to",
+    )
     OFFLINE_MARKER = "404 - Nicht gefunden"
     REQUEST_HEADERS = {
         "User-Agent": (
@@ -277,6 +282,11 @@ class FilmpalastScraper(BaseScraper):
             return "voe"
         if hostname.endswith(self.VEEV_HOSTNAME):
             return "veev"
+        for generic_host in self.GENERIC_HOSTNAMES:
+            if hostname.endswith(generic_host):
+                return "generic"
+        if hostname:
+            return "generic"
         return None
 
     def _is_stream_online(self, streaming_url: str, host_type: str) -> bool:
@@ -284,7 +294,7 @@ class FilmpalastScraper(BaseScraper):
             return self._is_voe_link_online(streaming_url)
         if host_type == "veev":
             return self._is_veev_link_online(streaming_url)
-        return False
+        return True
 
     def _is_voe_link_online(self, streaming_url: str) -> bool:
         try:
