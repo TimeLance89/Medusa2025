@@ -20,7 +20,8 @@ class FilmpalastScraper(BaseScraper):
 
     MOVIE_BASE_URL = "https://filmpalast.to/movies/new/page/{page}"
     SERIES_BASE_URL = "https://filmpalast.to/serien/view/page/{page}"
-    SELECTOR_TITLE = "h2.rb > a.rb"
+    MOVIE_SELECTOR_TITLE = "h2.rb > a.rb"
+    SERIES_SELECTOR_TITLE = "#serien-nav li > a"
     VOE_HOSTNAME = "voe.sx"
     VEEV_HOSTNAME = "veev.to"
     GENERIC_HOSTNAMES = (
@@ -57,7 +58,7 @@ class FilmpalastScraper(BaseScraper):
         soup = BeautifulSoup(response.text, "html.parser")
 
         results: List[ScraperResult] = []
-        for anchor in soup.select(self.SELECTOR_TITLE):
+        for anchor in soup.select(self.MOVIE_SELECTOR_TITLE):
             title = anchor.get_text(strip=True)
             href = anchor.get("href")
             if not href:
@@ -91,7 +92,7 @@ class FilmpalastScraper(BaseScraper):
         soup = BeautifulSoup(response.text, "html.parser")
 
         series_links: Dict[str, str] = {}
-        for anchor in soup.select(self.SELECTOR_TITLE):
+        for anchor in soup.select(self.SERIES_SELECTOR_TITLE):
             href = anchor.get("href")
             if not href:
                 continue
