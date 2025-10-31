@@ -167,12 +167,11 @@
 </section>
 {% endif %}
 
-{% set total_scraped_links = (scraped|length) + (scraped_series|length if scraped_series is defined else 0) %}
 {% set library_stats = [
     {'icon': 'collections_bookmark', 'label': 'Bibliothekstitel', 'value': total_movies, 'detail': 'Alle verfügbaren Filme & Serien in Medusa'},
     {'icon': 'auto_awesome', 'label': 'Beliebte Favoriten', 'value': popular_movies|length, 'detail': 'Top bewertete Inhalte aus deiner Sammlung'},
     {'icon': 'new_releases', 'label': 'Neu hinzugefügt', 'value': recent_movies|length, 'detail': 'Frisch synchronisierte Filme der letzten Zeit'},
-    {'icon': 'link', 'label': 'Streaming-Links aktiv', 'value': total_scraped_links, 'detail': 'Direkte Quellen aus deinen Scraper-Integrationen'}
+    {'icon': 'link', 'label': 'Streaming-Links aktiv', 'value': scraped|length, 'detail': 'Direkte Quellen aus deinen Scraper-Integrationen'}
 ] %}
 <section class="surface library-overview">
     <header class="section-head">

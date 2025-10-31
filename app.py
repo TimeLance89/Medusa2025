@@ -2559,94 +2559,6 @@ def fetch_movie_genre_stats(limit: Optional[int] = None) -> list[dict[str, objec
     return results
 
 
-def fetch_recent_scraper_entries(limit: int = 25) -> list[dict[str, object]]:
-    """Return a combined list of recently stored movie and series links."""
-
-    movie_links = (
-        StreamingLink.query.options(selectinload(StreamingLink.movie))
-        .order_by(StreamingLink.id.desc())
-        .limit(limit)
-        .all()
-    )
-    episode_links = (
-        EpisodeStreamingLink.query.options(
-            selectinload(EpisodeStreamingLink.episode)
-            .selectinload(SeriesEpisode.season)
-            .selectinload(SeriesSeason.series)
-        )
-        .order_by(EpisodeStreamingLink.id.desc())
-        .limit(limit)
-        .all()
-    )
-    return _combine_scraper_entries(movie_links, episode_links, limit)
-
-
-def _combine_scraper_entries(
-    movie_links: list[StreamingLink],
-    episode_links: list[EpisodeStreamingLink],
-    limit: int,
-) -> list[dict[str, object]]:
-    entries: list[dict[str, object]] = []
-
-    for link in movie_links:
-        movie = link.movie
-        if not movie:
-            continue
-        entries.append(
-            {
-                "id": link.id,
-                "content_type": "movie",
-                "link": link,
-                "movie": movie,
-                "series": None,
-                "season": None,
-                "episode": None,
-                "movie_id": movie.id,
-                "series_id": None,
-                "season_number": None,
-                "episode_number": None,
-                "source_name": link.source_name,
-                "mirror_info": link.mirror_info,
-                "sort_key": (link.id or 0, 0),
-            }
-        )
-
-    for link in episode_links:
-        episode = link.episode
-        if not episode:
-            continue
-        season = episode.season
-        if not season:
-            continue
-        series = season.series
-        if not series:
-            continue
-        entries.append(
-            {
-                "id": link.id,
-                "content_type": "series",
-                "link": link,
-                "movie": None,
-                "series": series,
-                "season": season,
-                "episode": episode,
-                "movie_id": None,
-                "series_id": series.id,
-                "season_number": season.season_number,
-                "episode_number": episode.episode_number,
-                "episode_title": episode.name,
-                "source_name": link.source_name,
-                "mirror_info": link.mirror_info,
-                "sort_key": (link.id or 0, 1),
-            }
-        )
-
-    entries.sort(key=lambda entry: entry["sort_key"], reverse=True)
-    if limit:
-        entries = entries[:limit]
-    return entries
-
-
 def build_library_context() -> dict:
     valid_filter = movie_has_valid_streaming_link()
     base_movie_query = Movie.query.options(selectinload(Movie.genres)).filter(valid_filter)
@@ -2709,25 +2621,7 @@ def build_library_context() -> dict:
     if recent_series:
         series_sections.append({"title": "Neu hinzugefügt", "items": recent_series})
 
-    scraped_movies = (
-        StreamingLink.query.options(selectinload(StreamingLink.movie))
-        .order_by(StreamingLink.id.desc())
-        .limit(25)
-        .all()
-    )
-    scraped_episode_links = (
-        EpisodeStreamingLink.query.options(
-            selectinload(EpisodeStreamingLink.episode)
-            .selectinload(SeriesEpisode.season)
-            .selectinload(SeriesSeason.series)
-        )
-        .order_by(EpisodeStreamingLink.id.desc())
-        .limit(25)
-        .all()
-    )
-    scraper_recent_entries = _combine_scraper_entries(
-        scraped_movies, scraped_episode_links, limit=25
-    )
+    scraped = StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
 
     hero_movies: List[Movie] = []
 
@@ -2773,9 +2667,7 @@ def build_library_context() -> dict:
         "categories": categories,
         "film_sections": film_sections,
         "series_sections": series_sections,
-        "scraped": scraped_movies,
-        "scraped_series": scraped_episode_links,
-        "scraper_recent_entries": scraper_recent_entries,
+        "scraped": scraped,
         "hero_movies": hero_movies,
         "now_playing_movies": now_playing_movies,
         "movie_library_stats": movie_library_stats,
@@ -2927,16 +2819,10 @@ def scraper_view():
     context = build_library_context()
     providers = SCRAPER_MANAGER.available_providers()
     context["scraper_providers"] = providers
-    categorized_providers = [
-        (provider, set(_get_scraper_categories(provider))) for provider in providers
-    ]
     context["movie_scraper_providers"] = [
-        provider for provider, categories in categorized_providers if "movies" in categories
-    ]
-    context["series_scraper_providers"] = [
         provider
-        for provider, categories in categorized_providers
-        if "series" in categories and "movies" not in categories
+        for provider in providers
+        if "movies" in _get_scraper_categories(provider)
     ]
     context["scraper_statuses"] = get_scraper_status()
     context["scraper_settings"] = {
@@ -2946,11 +2832,6 @@ def scraper_view():
         }
         for provider in providers
     }
-    recent_entries = context.get("scraper_recent_entries")
-    if recent_entries is None:
-        recent_entries = fetch_recent_scraper_entries()
-    context["scraper_recent_entries"] = recent_entries
-    context["scraper_recent_total"] = len(recent_entries)
     return render_template(
         "scraper.html",
         active_page="scraper",
