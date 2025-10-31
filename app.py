@@ -12,7 +12,7 @@ from flask import Flask, jsonify, render_template, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case, func, or_
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import selectinload
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
@@ -1044,11 +1044,10 @@ def ensure_database_indexes() -> None:
     engine = db.engine
     for index in DATABASE_INDEXES:
         try:
-            index.create(bind=engine)
-        except (OperationalError, ProgrammingError) as exc:
+            index.create(bind=engine, checkfirst=True)
+        except OperationalError as exc:
             message = str(exc).lower()
-            duplicates = ("already exists", "already exist", "duplicate")
-            if any(phrase in message for phrase in duplicates):
+            if "already exists" in message:
                 app.logger.debug("Skipping creation of existing index %s", index.name)
                 continue
             raise
