@@ -144,7 +144,6 @@ class _FilmpalastBase:
                     "series_title": episode_meta["series_title"],
                     "season": episode_meta["season"],
                     "episode": episode_meta["episode"],
-                    "episode_title": episode_meta.get("title"),
                 }
                 result = ScraperResult(
                     title=episode_meta["title"],

@@ -139,9 +139,8 @@
     </section>
 {% endmacro %}
 
-{% set all_providers = scraper_providers if scraper_providers else movie_scraper_providers + series_scraper_providers %}
 {% set summary = namespace(running=0, completed=0) %}
-{% for provider in all_providers %}
+{% for provider in movie_scraper_providers %}
     {% set status = scraper_statuses.get(provider.name, {}) %}
     {% if status.get('running') %}
         {% set summary.running = summary.running + 1 %}
@@ -150,12 +149,8 @@
     {% endif %}
 {% endfor %}
 
-{% set recent_entries = scraper_recent_entries or [] %}
-{% set total_links_value = scraper_recent_total|default(None) %}
-{% set total_links = total_links_value if total_links_value is not none else recent_entries|length %}
-{% set total_providers = all_providers|length %}
-{% set total_movie_providers = movie_scraper_providers|length %}
-{% set total_series_providers = series_scraper_providers|length %}
+{% set total_links = scraped|length %}
+{% set total_providers = movie_scraper_providers|length %}
 
 <section class="surface page-header page-header--split">
     <div class="page-header__content">
@@ -163,10 +158,6 @@
         <p class="section-subtitle">Kompakter Überblick über alle Scraper-Läufe und zuletzt importierte Links.</p>
         <div class="page-header__stats">
             <span><strong>{{ total_providers }}</strong> aktive Anbieter</span>
-            <span><strong>{{ total_movie_providers }}</strong> Film-Scraper</span>
-            {% if total_series_providers %}
-            <span><strong>{{ total_series_providers }}</strong> Serien-Scraper</span>
-            {% endif %}
             <span><strong>{{ total_links }}</strong> gespeicherte Links</span>
         </div>
     </div>
@@ -199,14 +190,6 @@
                 <dd>{{ summary.completed }}</dd>
             </div>
             <div>
-                <dt>Film-Scraper</dt>
-                <dd>{{ total_movie_providers }}</dd>
-            </div>
-            <div>
-                <dt>Serien-Scraper</dt>
-                <dd>{{ total_series_providers }}</dd>
-            </div>
-            <div>
                 <dt>Gespeicherte Links</dt>
                 <dd>{{ total_links }}</dd>
             </div>
@@ -226,24 +209,6 @@
     </div>
 </section>
 
-{% if series_scraper_providers %}
-<section class="surface scraper-group">
-    <header class="section-head">
-        <div>
-            <h2>Serien-Scraper</h2>
-            <p class="section-subtitle">Automatischer Import neuer Episoden-Streams.</p>
-        </div>
-    </header>
-    <div class="scraper-panels">
-        {% for provider in series_scraper_providers %}
-            {% set status = scraper_statuses.get(provider.name, {}) %}
-            {% set settings = scraper_settings.get(provider.name, {}) %}
-            {{ render_scraper_panel(provider, status, settings, provider.name, 'Serien-Scraper', 'series') }}
-        {% endfor %}
-    </div>
-</section>
-{% endif %}
-
 <section class="surface scraper-results">
     <header class="scraper-results__header">
         <div>
@@ -252,79 +217,16 @@
         </div>
     </header>
 
-    {% if recent_entries %}
+    {% if scraped %}
     <ul class="scraper-results__list">
-        {% for entry in recent_entries %}
-            {% set is_series = entry.content_type == 'series' %}
-            {% set movie = entry.movie %}
-            {% set series = entry.series %}
-            {% set season_number = entry.season_number %}
-            {% set episode_number = entry.episode_number %}
-            {% set subtitle = '' %}
-            {% if is_series %}
-                {% if season_number is not none and episode_number is not none %}
-                    {% set subtitle = 'Staffel ' ~ season_number ~ ' · Episode ' ~ '%02d' % episode_number %}
-                {% elif season_number is not none %}
-                    {% set subtitle = 'Staffel ' ~ season_number %}
-                {% endif %}
-                {% if entry.episode_title %}
-                    {% if subtitle %}
-                        {% set subtitle = subtitle ~ ' – ' ~ entry.episode_title %}
-                    {% else %}
-                        {% set subtitle = entry.episode_title %}
-                    {% endif %}
-                {% endif %}
-                {% if entry.mirror_info %}
-                    {% if subtitle %}
-                        {% set subtitle = subtitle ~ ' · ' ~ entry.mirror_info %}
-                    {% else %}
-                        {% set subtitle = entry.mirror_info %}
-                    {% endif %}
-                {% endif %}
-            {% else %}
-                {% if entry.mirror_info %}
-                    {% set subtitle = entry.mirror_info %}
-                {% else %}
-                    {% set subtitle = 'Mirror' %}
-                {% endif %}
-            {% endif %}
-            <li
-                class="scraper-result"
-                role="button"
-                tabindex="0"
-                data-content-type="{{ entry.content_type }}"
-                {% if is_series and series %}
-                    data-series-id="{{ series.id }}"
-                {% elif movie %}
-                    data-movie-id="{{ movie.id }}"
-                {% endif %}
-            >
+        {% for link in scraped %}
+            <li class="scraper-result" data-movie-id="{{ link.movie.id }}" role="button" tabindex="0">
                 <div class="scraper-result__meta">
-                    <span class="scraper-result__source">
-                        {{ entry.source_name }} · {{ 'Serie' if is_series else 'Film' }}
-                    </span>
-                    <h4>
-                        {% if is_series and series %}
-                            {{ series.name }}
-                        {% elif movie %}
-                            {{ movie.title }}
-                        {% else %}
-                            Unbekannter Titel
-                        {% endif %}
-                    </h4>
-                    {% if subtitle %}
-                        <p>{{ subtitle }}</p>
-                    {% endif %}
+                    <span class="scraper-result__source">{{ link.source_name }}</span>
+                    <h4>{{ link.movie.title }}</h4>
+                    <p>{{ link.mirror_info or 'Mirror' }}</p>
                 </div>
-                <button
-                    type="button"
-                    class="chip view-detail"
-                    {% if is_series and series %}
-                        data-series-id="{{ series.id }}"
-                    {% elif movie %}
-                        data-movie-id="{{ movie.id }}"
-                    {% endif %}
-                >
+                <button type="button" class="chip view-detail" data-movie-id="{{ link.movie.id }}">
                     <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
                     <span>Details</span>
                 </button>
