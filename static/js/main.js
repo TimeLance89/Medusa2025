@@ -123,6 +123,25 @@ document.querySelectorAll('[data-scraper-next]').forEach((input) => {
     scraperNextInputs.set(provider, input);
   }
 });
+const scraperHostInputs = new Map();
+const pendingHostUpdates = new Set();
+document.querySelectorAll('[data-scraper-host]').forEach((input) => {
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  const provider = input.dataset.provider;
+  const optionKey = input.value;
+  if (!provider || !optionKey) {
+    return;
+  }
+  const wrapper = input.closest('.chip');
+  if (!scraperHostInputs.has(provider)) {
+    scraperHostInputs.set(provider, new Map());
+  }
+  scraperHostInputs.get(provider).set(optionKey, { input, wrapper });
+  updateScraperHostChipState(input, wrapper);
+  input.addEventListener('change', handleScraperHostChange);
+});
 const providerCockpit = document.querySelector('[data-provider-cockpit]');
 const providerList = providerCockpit?.querySelector('[data-role="provider-list"]');
 const providerEmptyState = providerCockpit?.querySelector('[data-role="provider-empty"]');
@@ -776,6 +795,96 @@ function showToast(message, variant = 'info') {
   toast.dataset.variant = variant;
   toast.classList.add('show');
   setTimeout(() => toast.classList.remove('show'), 4000);
+}
+
+function updateScraperHostChipState(input, wrapper) {
+  const target = wrapper || input.closest('.chip');
+  if (!target) {
+    return;
+  }
+  target.classList.toggle('is-active', Boolean(input.checked));
+}
+
+function setScraperHostInputsDisabled(provider, disabled) {
+  const options = scraperHostInputs.get(provider);
+  if (!options) {
+    return;
+  }
+  options.forEach(({ input, wrapper }) => {
+    input.disabled = disabled;
+    if (wrapper) {
+      wrapper.classList.toggle('is-disabled', disabled);
+    }
+  });
+}
+
+function getSelectedScraperHosts(provider) {
+  const options = scraperHostInputs.get(provider);
+  if (!options) {
+    return [];
+  }
+  const selected = [];
+  options.forEach(({ input }, key) => {
+    if (input.checked) {
+      selected.push(key);
+    }
+  });
+  return selected;
+}
+
+async function handleScraperHostChange(event) {
+  const input = event.currentTarget;
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  const provider = input.dataset.provider;
+  if (!provider) {
+    return;
+  }
+  updateScraperHostChipState(input);
+  if (pendingHostUpdates.has(provider)) {
+    event.preventDefault();
+    refreshScraperSettingsUi();
+    return;
+  }
+
+  pendingHostUpdates.add(provider);
+  setScraperHostInputsDisabled(provider, true);
+
+  const selectedHosts = getSelectedScraperHosts(provider);
+  try {
+    showToast('Anbieterauswahl wird gespeichert...');
+    const payload = {
+      scrapers: {
+        [provider]: {
+          hosts: selectedHosts,
+        },
+      },
+    };
+    const { success, settings } = await callApi('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (success) {
+      if (!currentSettings.scrapers) {
+        currentSettings.scrapers = {};
+      }
+      const providerUpdate = settings?.scrapers?.[provider] || { hosts: selectedHosts };
+      currentSettings.scrapers[provider] = {
+        ...(currentSettings.scrapers[provider] || {}),
+        ...providerUpdate,
+      };
+      refreshScraperSettingsUi();
+      showToast('Anbieterauswahl gespeichert.', 'success');
+    }
+  } catch (_) {
+    // Fehler bereits behandelt durch callApi
+  } finally {
+    pendingHostUpdates.delete(provider);
+    setScraperHostInputsDisabled(provider, false);
+    refreshScraperSettingsUi();
+  }
 }
 
 function formatDate(value) {
@@ -2423,6 +2532,19 @@ function refreshScraperSettingsUi() {
     const settings = currentSettings.scrapers?.[provider] || {};
     const lastValue = Number(settings.last_page);
     label.textContent = Number.isFinite(lastValue) && lastValue > 0 ? String(lastValue) : '–';
+  });
+
+  scraperHostInputs.forEach((options, provider) => {
+    const settings = currentSettings.scrapers?.[provider] || {};
+    const selectedHosts = Array.isArray(settings.hosts)
+      ? settings.hosts.map((value) => String(value))
+      : [];
+    const selectedSet = new Set(selectedHosts);
+    options.forEach(({ input, wrapper }, key) => {
+      const shouldCheck = selectedSet.size ? selectedSet.has(key) : Boolean(input.checked);
+      input.checked = shouldCheck;
+      updateScraperHostChipState(input, wrapper);
+    });
   });
 }
 
