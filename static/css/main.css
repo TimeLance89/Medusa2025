@@ -1282,18 +1282,6 @@ body.showing-search {
     background: linear-gradient(135deg, rgba(88, 166, 255, 0.95), rgba(88, 166, 255, 0.55));
 }
 
-.chip--danger {
-    background: rgba(255, 95, 109, 0.18);
-    border-color: rgba(255, 95, 109, 0.4);
-    color: #ffb3a1;
-}
-
-.chip--danger:hover {
-    background: rgba(255, 95, 109, 0.28);
-    border-color: rgba(255, 95, 109, 0.55);
-    color: #ffd4ca;
-}
-
 .chip--ghost {
     background: rgba(12, 16, 28, 0.45);
     border-color: rgba(120, 144, 255, 0.28);
@@ -2518,12 +2506,6 @@ body.showing-search {
     align-items: stretch;
 }
 
-.scraper-sidebar {
-    display: grid;
-    gap: 1.8rem;
-    align-self: stretch;
-}
-
 .scraper-summary {
     display: grid;
     gap: 1.4rem;
@@ -2561,130 +2543,6 @@ body.showing-search {
     font-size: 1.6rem;
     font-weight: 600;
     color: var(--accent-strong);
-}
-
-.scraper-providers {
-    display: grid;
-    gap: 1.4rem;
-}
-
-.scraper-providers__header {
-    display: grid;
-    gap: 0.4rem;
-}
-
-.scraper-providers__description {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 0.95rem;
-}
-
-.scraper-providers__body {
-    display: grid;
-    gap: 1rem;
-}
-
-.scraper-providers__empty {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 0.95rem;
-}
-
-.scraper-providers__loading {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-}
-
-.scraper-providers__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.9rem;
-}
-
-.scraper-providers__item {
-    display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1fr);
-    gap: 1rem;
-    align-items: center;
-    padding: 0.95rem 1.1rem;
-    border-radius: var(--radius-md);
-    background: rgba(12, 16, 28, 0.55);
-    border: 1px solid rgba(120, 144, 255, 0.2);
-}
-
-.scraper-providers__info {
-    display: grid;
-    gap: 0.3rem;
-}
-
-.scraper-providers__info h3 {
-    margin: 0;
-    font-size: 1.25rem;
-    letter-spacing: -0.01em;
-}
-
-.scraper-providers__aliases {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-}
-
-.scraper-providers__meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.6rem 1.2rem;
-    color: var(--text-muted);
-    font-size: 0.92rem;
-}
-
-.scraper-providers__meta strong {
-    color: var(--text-primary);
-    font-weight: 600;
-}
-
-.scraper-providers__status {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.3rem 0.9rem;
-    border-radius: 999px;
-    border: 1px solid rgba(120, 144, 255, 0.35);
-    background: rgba(120, 144, 255, 0.18);
-    color: var(--accent-strong);
-    font-weight: 600;
-    font-size: 0.85rem;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-}
-
-.scraper-providers__status[data-state='inactive'] {
-    background: rgba(255, 193, 7, 0.18);
-    border-color: rgba(255, 193, 7, 0.38);
-    color: #ffd479;
-}
-
-.scraper-providers__status[data-state='hidden'] {
-    background: rgba(126, 142, 181, 0.18);
-    border-color: rgba(126, 142, 181, 0.32);
-    color: #d4dbff;
-}
-
-.scraper-providers__actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.5rem;
-}
-
-.scraper-providers__actions .chip {
-    white-space: nowrap;
-}
-
-.scraper-providers__actions .chip.is-loading {
-    opacity: 0.6;
-    pointer-events: none;
 }
 
 .scraper-panels {
@@ -2974,29 +2832,6 @@ body.showing-search {
     background: rgba(12, 16, 28, 0.72);
     border: 1px solid rgba(120, 144, 255, 0.18);
     transition: border-color var(--transition), transform var(--transition);
-}
-
-@media (max-width: 1200px) {
-    .scraper-layout {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .scraper-providers__item {
-        grid-template-columns: minmax(0, 1fr);
-        align-items: flex-start;
-    }
-
-    .scraper-providers__actions {
-        justify-content: flex-start;
-    }
-}
-
-@media (max-width: 720px) {
-    .scraper-providers__meta {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.35rem;
-    }
 }
 
 .scraper-result:hover {

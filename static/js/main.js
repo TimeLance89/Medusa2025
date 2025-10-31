@@ -123,10 +123,6 @@ document.querySelectorAll('[data-scraper-next]').forEach((input) => {
     scraperNextInputs.set(provider, input);
   }
 });
-const streamProviderPanel = document.getElementById('streamProviderPanel');
-const streamProviderList = streamProviderPanel?.querySelector('[data-role="provider-table-body"]');
-const streamProviderEmpty = streamProviderPanel?.querySelector('[data-role="provider-empty"]');
-const streamProviderLoading = streamProviderPanel?.querySelector('[data-role="provider-loading"]');
 const allMoviesSortButtons = document.querySelectorAll('[data-sort-option]');
 const ALL_MOVIES_PAGE_SIZE = 100;
 const ALL_MOVIES_RUNTIME_CHUNK_SIZE = 25;
@@ -135,13 +131,6 @@ const titleCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: tr
 
 const STORAGE_KEYS = Object.freeze({
   allMoviesSort: 'medusa.allMovies.sortPreferences',
-});
-
-const STREAM_PROVIDER_ACTION_LABELS = Object.freeze({
-  activate: 'Aktivieren',
-  deactivate: 'Deaktivieren',
-  hide: 'Nicht anzeigen',
-  delete: 'Löschen',
 });
 
 let lastRecordedView = { key: null, timestamp: 0 };
@@ -183,8 +172,6 @@ let heroSlides = [];
 let heroActiveIndex = 0;
 let heroRotationTimeout = null;
 const allMoviesRuntimeCache = new Map();
-let currentStreamProviderOverview = [];
-let streamProviderLoadingState = false;
 
 function recordContentView(payload) {
   if (!payload || typeof payload !== 'object') {
@@ -1408,211 +1395,6 @@ function setButtonsDisabled(buttons, disabled) {
       button.disabled = disabled;
     }
   });
-}
-
-function setStreamProviderLoading(isLoading) {
-  if (!streamProviderPanel) return;
-  streamProviderLoadingState = Boolean(isLoading);
-  if (streamProviderLoading) {
-    streamProviderLoading.hidden = !streamProviderLoadingState;
-  }
-  streamProviderPanel.dataset.loading = streamProviderLoadingState ? 'true' : 'false';
-}
-
-function renderStreamProviderOverview(providers = []) {
-  if (!streamProviderPanel || !streamProviderList) {
-    return;
-  }
-
-  const items = Array.isArray(providers) ? providers : [];
-  currentStreamProviderOverview = items;
-  streamProviderList.innerHTML = '';
-
-  if (streamProviderEmpty) {
-    streamProviderEmpty.hidden = Boolean(items.length);
-  }
-
-  if (!items.length) {
-    return;
-  }
-
-  items.forEach((provider) => {
-    const item = document.createElement('li');
-    item.classList.add('scraper-providers__item');
-    item.dataset.providerId = provider.identifier;
-
-    const info = document.createElement('div');
-    info.classList.add('scraper-providers__info');
-
-    const heading = document.createElement('h3');
-    heading.textContent = provider.name || provider.identifier;
-    info.appendChild(heading);
-
-    if (Array.isArray(provider.aliases) && provider.aliases.length) {
-      const aliasText = provider.aliases.join(', ');
-      if (
-        aliasText &&
-        aliasText.toLowerCase() !== (provider.name || '').toLowerCase()
-      ) {
-        const aliases = document.createElement('p');
-        aliases.classList.add('scraper-providers__aliases');
-        aliases.textContent = `Alias: ${aliasText}`;
-        info.appendChild(aliases);
-      }
-    }
-
-    const meta = document.createElement('div');
-    meta.classList.add('scraper-providers__meta');
-
-    const status = document.createElement('span');
-    status.classList.add('scraper-providers__status');
-    if (provider.status) {
-      status.dataset.state = provider.status;
-    }
-    status.textContent = provider.status_label || provider.status || 'Aktiv';
-    meta.appendChild(status);
-
-    const createMetric = (label, value) => {
-      const span = document.createElement('span');
-      const strong = document.createElement('strong');
-      strong.textContent = Number.isFinite(Number(value)) ? Number(value) : 0;
-      span.appendChild(strong);
-      span.append(` ${label}`);
-      return span;
-    };
-
-    meta.appendChild(createMetric('Filme', provider.movie_links || 0));
-    meta.appendChild(createMetric('Serien', provider.episode_links || 0));
-    meta.appendChild(createMetric('Links', provider.total_links || 0));
-
-    const actions = document.createElement('div');
-    actions.classList.add('scraper-providers__actions');
-
-    const availableActions = Array.isArray(provider.available_actions)
-      ? provider.available_actions
-      : [];
-
-    availableActions.forEach((action) => {
-      if (typeof action !== 'string' || !action) {
-        return;
-      }
-      const normalized = action.toLowerCase();
-      const label = STREAM_PROVIDER_ACTION_LABELS[normalized] || action;
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.classList.add('chip');
-      if (normalized === 'activate') {
-        button.classList.add('chip--primary');
-      } else if (normalized === 'delete') {
-        button.classList.add('chip--danger');
-      } else {
-        button.classList.add('chip--subtle');
-      }
-      button.dataset.providerAction = normalized;
-      button.dataset.providerId = provider.identifier;
-      button.dataset.providerName = provider.name || provider.identifier;
-      button.textContent = label;
-      actions.appendChild(button);
-    });
-
-    item.appendChild(info);
-    item.appendChild(meta);
-    item.appendChild(actions);
-    streamProviderList.appendChild(item);
-  });
-}
-
-async function loadStreamProviderOverview() {
-  if (!streamProviderPanel || streamProviderLoadingState) {
-    return;
-  }
-
-  setStreamProviderLoading(true);
-  try {
-    const { success, providers } = await callApi('/api/stream-providers');
-    if (success) {
-      renderStreamProviderOverview(providers);
-    }
-  } catch (_) {
-    // Fehler bereits behandelt
-  } finally {
-    setStreamProviderLoading(false);
-  }
-}
-
-async function performStreamProviderAction(identifier, action, button) {
-  if (!identifier || !action) {
-    return;
-  }
-
-  if (action === 'delete') {
-    const provider = currentStreamProviderOverview.find(
-      (item) => item.identifier === identifier
-    );
-    const providerName = provider?.name || button?.dataset?.providerName || 'diesem Anbieter';
-    if (
-      !window.confirm(
-        `Möchtest du wirklich alle Links von ${providerName} dauerhaft löschen?`
-      )
-    ) {
-      return;
-    }
-  }
-
-  if (button) {
-    button.disabled = true;
-    button.classList.add('is-loading');
-  }
-
-  try {
-    const response = await callApi(
-      `/api/stream-providers/${encodeURIComponent(identifier)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      }
-    );
-    if (response?.success) {
-      renderStreamProviderOverview(response.providers || []);
-      if (response.message) {
-        showToast(response.message, 'success');
-      }
-    }
-  } catch (_) {
-    // Fehler bereits über callApi gemeldet
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.classList.remove('is-loading');
-    }
-  }
-}
-
-function handleStreamProviderPanelClick(event) {
-  if (!streamProviderPanel) {
-    return;
-  }
-  const button = event.target.closest('[data-provider-action]');
-  if (!button || !streamProviderPanel.contains(button)) {
-    return;
-  }
-  event.preventDefault();
-  const { providerAction: action, providerId: identifier } = button.dataset;
-  performStreamProviderAction(identifier, action, button);
-}
-
-function initStreamProviderCockpit() {
-  if (!streamProviderPanel) {
-    return;
-  }
-
-  if (streamProviderEmpty) {
-    streamProviderEmpty.hidden = true;
-  }
-
-  streamProviderPanel.addEventListener('click', handleStreamProviderPanelClick);
-  loadStreamProviderOverview();
 }
 
 function normalizeScraperStatus(raw, provider = '') {
@@ -3763,7 +3545,6 @@ initAllMoviesGenreFilter();
 initAllMoviesSort();
 initMediaRails();
 initHero();
-initStreamProviderCockpit();
 initScraperStatus();
 loadSettings();
 if (document.body?.dataset?.loadAllMovies === 'true') {
