@@ -27,6 +27,38 @@ class _FilmpalastBase:
         "bigwarp.pro",
         "strmup.to",
     )
+    STREAM_HOST_OPTIONS = {
+        "veev_hd": {
+            "label": "Veev HD",
+            "hostnames": ("veev.to",),
+            "aliases": ("veev", "veev hd"),
+            "default": True,
+        },
+        "savefiles_hd": {
+            "label": "SaveFiles HD",
+            "hostnames": ("savefiles.com",),
+            "aliases": ("savefiles hd", "savefiles"),
+            "default": True,
+        },
+        "voe_hd": {
+            "label": "VOE HD",
+            "hostnames": ("voe.sx",),
+            "aliases": ("voe hd", "voe"),
+            "default": True,
+        },
+        "bigwarp_hd": {
+            "label": "BigWarp HD",
+            "hostnames": ("bigwarp.pro",),
+            "aliases": ("bigwarp hd", "bigwarp"),
+            "default": True,
+        },
+        "streamup_hd": {
+            "label": "Streamup HD",
+            "hostnames": ("strmup.to",),
+            "aliases": ("streamup hd", "streamup", "strmup"),
+            "default": True,
+        },
+    }
     OFFLINE_MARKER = "404 - Nicht gefunden"
     REQUEST_HEADERS = {
         "User-Agent": (
@@ -36,6 +68,41 @@ class _FilmpalastBase:
         ),
         "Referer": "https://filmpalast.to/",
     }
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._selected_stream_hosts: Optional[set[str]] = None
+
+    @property
+    def stream_host_options(self) -> dict[str, dict[str, object]]:
+        return {key: dict(value) for key, value in self.STREAM_HOST_OPTIONS.items()}
+
+    def default_stream_host_keys(self) -> set[str]:
+        defaults = {
+            key
+            for key, option in self.STREAM_HOST_OPTIONS.items()
+            if option.get("default", True)
+        }
+        if defaults:
+            return defaults
+        return set(self.STREAM_HOST_OPTIONS.keys())
+
+    def configure_stream_hosts(self, host_keys: Optional[List[str]]) -> None:
+        if host_keys is None:
+            self._selected_stream_hosts = None
+            return
+        available = set(self.STREAM_HOST_OPTIONS.keys())
+        normalized = {
+            str(host_key)
+            for host_key in host_keys
+            if isinstance(host_key, str) and host_key in available
+        }
+        self._selected_stream_hosts = set(normalized)
+
+    def _current_stream_host_keys(self) -> Optional[set[str]]:
+        if self._selected_stream_hosts is None:
+            return self.default_stream_host_keys()
+        return set(self._selected_stream_hosts)
 
     # ------------------------------------------------------------------
     # Movie handling
@@ -57,7 +124,11 @@ class _FilmpalastBase:
             detail_url = self._normalize_detail_url(url, href)
             stream_data = self._scrape_detail(detail_url)
             for data in stream_data:
-                metadata = {"host_name": data.get("host_name"), "type": "movie"}
+                metadata = {
+                    "host_name": data.get("host_name"),
+                    "host_key": data.get("host_key"),
+                    "type": "movie",
+                }
                 result = ScraperResult(
                     title=title,
                     streaming_url=data["url"],
@@ -140,6 +211,7 @@ class _FilmpalastBase:
             for data in stream_data:
                 metadata = {
                     "host_name": data.get("host_name"),
+                    "host_key": data.get("host_key"),
                     "type": "series",
                     "series_title": episode_meta["series_title"],
                     "season": episode_meta["season"],
@@ -218,6 +290,7 @@ class _FilmpalastBase:
     def _parse_stream_links(
         self, soup: BeautifulSoup, detail_url: str
     ) -> List[dict[str, Optional[str]]]:
+        allowed_hosts = self._current_stream_host_keys()
         results: List[dict[str, Optional[str]]] = []
         for host_item in soup.select("li.hostBg"):
             host_name_elem = host_item.select_one(".hostName")
@@ -239,13 +312,12 @@ class _FilmpalastBase:
             streaming_url = self._normalize_streaming_url(streaming_url, detail_url)
 
             host_type = self._identify_host_type(streaming_url)
-            if host_type is None:
+            host_key = self._identify_host_key(host_name, streaming_url, host_type)
+            if host_key is None:
                 continue
-            if host_type != "veev":
+            if allowed_hosts is not None and host_key not in allowed_hosts:
                 continue
 
-            if host_name and "veev hd" not in host_name.lower():
-                continue
             if not self._is_stream_online(streaming_url, host_type):
                 continue
 
@@ -255,6 +327,7 @@ class _FilmpalastBase:
                     "mirror_info": host_name,
                     "host_name": host_name,
                     "host_type": host_type,
+                    "host_key": host_key,
                 }
             )
         return results
@@ -284,6 +357,35 @@ class _FilmpalastBase:
                 return "generic"
         if hostname:
             return "generic"
+        return None
+
+    def _identify_host_key(
+        self,
+        host_name: Optional[str],
+        streaming_url: str,
+        host_type: Optional[str],
+    ) -> Optional[str]:
+        hostname = urlparse(streaming_url).netloc.lower()
+        normalized_name = host_name.lower() if host_name else ""
+        for key, option in self.STREAM_HOST_OPTIONS.items():
+            aliases = tuple(
+                alias.lower()
+                for alias in option.get("aliases", ())
+                if isinstance(alias, str)
+            )
+            hostnames = tuple(
+                host.lower()
+                for host in option.get("hostnames", ())
+                if isinstance(host, str)
+            )
+            if any(hostname.endswith(candidate) for candidate in hostnames):
+                return key
+            if normalized_name and normalized_name in aliases:
+                return key
+        if host_type == "voe":
+            return "voe_hd" if "voe_hd" in self.STREAM_HOST_OPTIONS else None
+        if host_type == "veev":
+            return "veev_hd" if "veev_hd" in self.STREAM_HOST_OPTIONS else None
         return None
 
     def _is_stream_online(self, streaming_url: str, host_type: str) -> bool:

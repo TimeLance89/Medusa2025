@@ -1,4 +1,5 @@
 import glob
+import json
 import os
 import re
 import time
@@ -1319,6 +1320,49 @@ def set_scraper_setting(provider: str, suffix: str, value: int) -> None:
     set_setting(_scraper_setting_key(provider, suffix), str(value))
 
 
+def _scraper_hosts_setting_key(provider: str) -> str:
+    return f"{provider}_hosts"
+
+
+def get_scraper_host_setting(provider: str) -> set[str]:
+    raw_value = get_setting(_scraper_hosts_setting_key(provider))
+    if raw_value is None:
+        return set()
+    parsed: set[str] = set()
+    if isinstance(raw_value, str):
+        try:
+            decoded = json.loads(raw_value)
+        except json.JSONDecodeError:
+            decoded = None
+        if isinstance(decoded, list):
+            for item in decoded:
+                if not isinstance(item, str):
+                    continue
+                normalized = item.strip()
+                if normalized:
+                    parsed.add(normalized)
+        else:
+            for part in raw_value.split(","):
+                normalized = part.strip()
+                if normalized:
+                    parsed.add(normalized)
+    return parsed
+
+
+def set_scraper_host_setting(provider: str, hosts: List[str]) -> None:
+    normalized = []
+    seen: set[str] = set()
+    for host in hosts:
+        if not isinstance(host, str):
+            continue
+        key = host.strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(key)
+    set_setting(_scraper_hosts_setting_key(provider), json.dumps(normalized))
+
+
 def _get_scraper_categories(scraper: BaseScraper) -> Tuple[str, ...]:
     categories = getattr(scraper, "content_categories", ("movies",))
     if isinstance(categories, str):
@@ -1384,6 +1428,109 @@ def _initialize_scraper_state(provider: str) -> str:
         if provider not in SCRAPER_LOG:
             SCRAPER_LOG[provider] = deque(maxlen=SCRAPER_LOG_MAXLEN)
     return label
+
+
+def _get_scraper_stream_host_options(scraper: BaseScraper) -> dict[str, dict[str, object]]:
+    options_attr = getattr(scraper, "stream_host_options", None)
+    if callable(options_attr):
+        raw_options = options_attr()
+    else:
+        raw_options = options_attr
+    options: dict[str, dict[str, object]] = {}
+    if isinstance(raw_options, dict):
+        for key, value in raw_options.items():
+            if not isinstance(key, str):
+                continue
+            normalized_key = key.strip()
+            if not normalized_key:
+                continue
+            if isinstance(value, dict):
+                label = value.get("label")
+                description = value.get("description")
+                default = value.get("default", True)
+            else:
+                label = value
+                description = None
+                default = True
+            options[normalized_key] = {
+                "label": (str(label).strip() if label is not None else normalized_key),
+                "description": (str(description).strip() if isinstance(description, str) else ""),
+                "default": bool(default),
+            }
+    return options
+
+
+def _resolve_scraper_host_selection(
+    scraper: BaseScraper, options: dict[str, dict[str, object]]
+) -> set[str]:
+    if not options:
+        return set()
+    stored = get_scraper_host_setting(scraper.name)
+    if stored:
+        filtered = {key for key in stored if key in options}
+        if filtered:
+            return filtered
+    defaults = {key for key, data in options.items() if data.get("default", True)}
+    if defaults:
+        return defaults
+    return set(options.keys())
+
+
+def _apply_scraper_host_preferences(scraper: BaseScraper) -> None:
+    configure = getattr(scraper, "configure_stream_hosts", None)
+    if not callable(configure):
+        return
+    options = _get_scraper_stream_host_options(scraper)
+    selection = _resolve_scraper_host_selection(scraper, options) if options else set()
+    configure(sorted(selection))
+
+
+def _normalize_scraper_host_values(
+    provider: str, host_values
+) -> tuple[Optional[list[str]], Optional[str]]:
+    scraper = SCRAPER_MANAGER.get_scraper(provider)
+    if scraper is None:
+        return None, "Unbekannter Scraper."
+    options = _get_scraper_stream_host_options(scraper)
+    if not options:
+        return [], None
+    if host_values is None:
+        return None, None
+    if isinstance(host_values, str):
+        candidates = [part.strip() for part in host_values.split(",")]
+    elif isinstance(host_values, (list, tuple, set)):
+        candidates = list(host_values)
+    else:
+        return None, "Ungültige Auswahl."
+    normalized: list[str] = []
+    seen: set[str] = set()
+    invalid: list[str] = []
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        key = candidate.strip()
+        if not key:
+            continue
+        if key not in options:
+            invalid.append(key)
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(key)
+    if invalid:
+        return None, f"Ungültige Anbieter: {', '.join(sorted(set(invalid)))}"
+    return normalized, None
+
+
+def _build_scraper_provider_settings(scraper: BaseScraper) -> dict[str, object]:
+    options = _get_scraper_stream_host_options(scraper)
+    hosts = sorted(_resolve_scraper_host_selection(scraper, options)) if options else []
+    return {
+        "next_page": get_scraper_int_setting(scraper.name, "next_page", 1),
+        "last_page": get_scraper_int_setting(scraper.name, "last_page", 0),
+        "hosts": hosts,
+    }
 
 
 def get_tmdb_api_key() -> str:
@@ -2665,6 +2812,7 @@ def _run_scraper(provider: str, start_page: int, include_series: bool = False) -
 
     try:
         with app.app_context():
+            _apply_scraper_host_preferences(scraper)
             while True:
                 _append_scraper_log(
                     provider,
@@ -3259,12 +3407,27 @@ def scraper_view():
     ]
     context["scraper_statuses"] = get_scraper_status()
     context["scraper_settings"] = {
-        provider.name: {
-            "next_page": get_scraper_int_setting(provider.name, "next_page", 1),
-            "last_page": get_scraper_int_setting(provider.name, "last_page", 0),
-        }
+        provider.name: _build_scraper_provider_settings(provider)
         for provider in providers
     }
+    host_options_payload: dict[str, list[dict[str, object]]] = {}
+    for provider in providers:
+        options = _get_scraper_stream_host_options(provider)
+        if not options:
+            continue
+        selection = _resolve_scraper_host_selection(provider, options)
+        host_options_payload[provider.name] = [
+            {
+                "key": key,
+                "label": data.get("label") or key,
+                "description": data.get("description") or "",
+                "selected": key in selection,
+            }
+            for key, data in sorted(
+                options.items(), key=lambda item: item[1].get("label", item[0]).lower()
+            )
+        ]
+    context["scraper_host_options"] = host_options_payload
     return render_template(
         "scraper.html",
         active_page="scraper",
@@ -3284,10 +3447,7 @@ def settings_view():
         page_title="Medusa – Einstellungen",
         scraper_providers=providers,
         scraper_settings={
-            provider.name: {
-                "next_page": get_scraper_int_setting(provider.name, "next_page", 1),
-                "last_page": get_scraper_int_setting(provider.name, "last_page", 0),
-            }
+            provider.name: _build_scraper_provider_settings(provider)
             for provider in providers
         },
     )
@@ -3758,10 +3918,7 @@ def api_tmdb(category: str):
 def api_settings():
     if request.method == "GET":
         scraper_settings = {
-            provider.name: {
-                "next_page": get_scraper_int_setting(provider.name, "next_page", 1),
-                "last_page": get_scraper_int_setting(provider.name, "last_page", 0),
-            }
+            provider.name: _build_scraper_provider_settings(provider)
             for provider in SCRAPER_MANAGER.available_providers()
         }
         return jsonify(
@@ -3788,25 +3945,40 @@ def api_settings():
     scrapers_data = data.get("scrapers")
     if isinstance(scrapers_data, dict):
         for provider, values in scrapers_data.items():
-            if SCRAPER_MANAGER.get_scraper(provider) is None:
+            scraper = SCRAPER_MANAGER.get_scraper(provider)
+            if scraper is None:
                 continue
-            next_page_value = (values or {}).get("next_page")
-            if next_page_value is None:
-                continue
-            try:
-                next_page = int(next_page_value)
-            except (TypeError, ValueError):
-                errors[f"{provider}_next_page"] = "Ungültige Zahl."
-                continue
-            if next_page < 1:
-                errors[f"{provider}_next_page"] = "Wert muss größer oder gleich 1 sein."
-                continue
-            set_scraper_setting(provider, "next_page", next_page)
-            set_scraper_setting(provider, "last_page", max(0, next_page - 1))
-            scraper_updates[provider] = {
-                "next_page": next_page,
-                "last_page": max(0, next_page - 1),
-            }
+            provider_updates: dict[str, object] = {}
+            payload = values or {}
+
+            next_page_value = payload.get("next_page")
+            if next_page_value is not None:
+                try:
+                    next_page = int(next_page_value)
+                except (TypeError, ValueError):
+                    errors[f"{provider}_next_page"] = "Ungültige Zahl."
+                else:
+                    if next_page < 1:
+                        errors[f"{provider}_next_page"] = "Wert muss größer oder gleich 1 sein."
+                    else:
+                        set_scraper_setting(provider, "next_page", next_page)
+                        set_scraper_setting(provider, "last_page", max(0, next_page - 1))
+                        provider_updates["next_page"] = next_page
+                        provider_updates["last_page"] = max(0, next_page - 1)
+
+            if "hosts" in payload:
+                normalized_hosts, error = _normalize_scraper_host_values(
+                    provider, payload.get("hosts")
+                )
+                if error:
+                    errors[f"{provider}_hosts"] = error
+                elif normalized_hosts is not None:
+                    set_scraper_host_setting(provider, normalized_hosts)
+                    _apply_scraper_host_preferences(scraper)
+                    provider_updates["hosts"] = normalized_hosts
+
+            if provider_updates:
+                scraper_updates[provider] = provider_updates
 
     # Backwards compatibility for legacy fields
     for scraper in SCRAPER_MANAGER.available_providers():
@@ -3830,6 +4002,15 @@ def api_settings():
 
     if errors:
         return jsonify({"success": False, "errors": errors}), 400
+
+    if scraper_updates:
+        for provider, values in scraper_updates.items():
+            scraper = SCRAPER_MANAGER.get_scraper(provider)
+            if scraper is None:
+                continue
+            if "hosts" not in values:
+                continue
+            _apply_scraper_host_preferences(scraper)
 
     if scraper_updates:
         response_payload["scrapers"] = scraper_updates

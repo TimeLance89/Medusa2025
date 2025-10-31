@@ -2,7 +2,7 @@
 {% block title %}{{ page_title or 'Medusa – Scraper' }}{% endblock %}
 
 {% block main %}
-{% macro render_scraper_panel(provider, status, settings, panel_id, heading, mode, start_page=None) %}
+{% macro render_scraper_panel(provider, status, settings, panel_id, heading, mode, start_page=None, host_options=None) %}
     {% set progress_value = status.get('progress', 0.0) %}
     {% set status_next = status.get('next_page') or settings.get('next_page') %}
     {% set status_last = status.get('last_page') or (settings.get('last_page') if settings.get('last_page') else None) %}
@@ -103,6 +103,30 @@
                     <dd data-role="scraper-title">{{ status.get('last_title') or '–' }}</dd>
                 </div>
             </dl>
+            {% if host_options %}
+                <div class="scraper-card__options" data-role="scraper-host-options">
+                    <p class="scraper-card__options-title">Stream-Anbieter</p>
+                    <div class="scraper-card__options-list">
+                        {% for option in host_options %}
+                            {% set description = option.description or '' %}
+                            <label
+                                class="chip chip--ghost chip--toggle{% if option.selected %} is-active{% endif %}"
+                                {% if description %}title="{{ description }}"{% endif %}
+                            >
+                                <input
+                                    type="checkbox"
+                                    value="{{ option.key }}"
+                                    data-scraper-host
+                                    data-provider="{{ provider.name }}"
+                                    {% if option.selected %}checked{% endif %}
+                                />
+                                <span class="chip__check material-symbols-outlined" aria-hidden="true">check</span>
+                                <span>{{ option.label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
         </div>
 
         <footer class="scraper-card__footer">
@@ -201,7 +225,8 @@
             {% for provider in movie_scraper_providers %}
                 {% set status = scraper_statuses.get(provider.name, {}) %}
                 {% set settings = scraper_settings.get(provider.name, {}) %}
-                {{ render_scraper_panel(provider, status, settings, provider.name, 'Film-Scraper', 'movies') }}
+                {% set host_options = scraper_host_options.get(provider.name, []) %}
+                {{ render_scraper_panel(provider, status, settings, provider.name, 'Film-Scraper', 'movies', host_options=host_options) }}
             {% endfor %}
         {% else %}
             <p class="empty large">Keine Scraper-Anbieter verfügbar.</p>
