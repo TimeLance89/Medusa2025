@@ -549,6 +549,8 @@ body.showing-search {
     text-decoration: none;
     min-width: 0;
     transition: background var(--transition), border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+    position: relative;
+    z-index: 1300;
 }
 
 .topbar-profile__trigger:hover {
