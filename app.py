@@ -8,7 +8,7 @@ from threading import Lock, Thread
 from typing import List, Optional, Set, Tuple
 
 import requests
-from flask import Flask, jsonify, render_template, request, url_for
+from flask import Flask, jsonify, render_template, request, url_for, g
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case, func, or_
 from sqlalchemy.engine import make_url
@@ -16,6 +16,8 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import selectinload
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
+
+from urllib.parse import urlparse
 
 from scrapers import BaseScraper, ScraperResult, get_scraper_manager
 
@@ -629,7 +631,7 @@ class Movie(db.Model):
             "release_date": self.release_date,
             "rating": self.rating,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "streaming_links": [link.to_dict() for link in self.streaming_links],
+            "streaming_links": serialize_streaming_links(self.streaming_links),
             "genres": [genre.name for genre in self.genres if genre.name],
         }
 
@@ -646,12 +648,28 @@ class StreamingLink(db.Model):
     movie = db.relationship("Movie", back_populates="streaming_links")
 
     def to_dict(self) -> dict:
+        preferences = get_stream_provider_preferences_cache()
+        provider_key, display_name = identify_stream_provider(
+            self.mirror_info, self.url, self.source_name
+        )
+        preference = preferences.get(provider_key)
+        if preference is None:
+            preference = register_stream_provider(provider_key, display_name)
+            preferences[provider_key] = preference
+
+        is_visible = preference.is_visible if preference else True
+        is_enabled = preference.is_enabled if preference else True
+
         return {
             "id": self.id,
             "movie_id": self.movie_id,
             "source_name": self.source_name,
             "url": self.url,
             "mirror_info": self.mirror_info,
+            "provider_key": provider_key,
+            "provider_display_name": display_name,
+            "provider_visible": bool(is_visible),
+            "provider_enabled": bool(is_enabled),
         }
 
 
@@ -781,12 +799,49 @@ class EpisodeStreamingLink(db.Model):
     )
 
     def to_dict(self) -> dict:
+        preferences = get_stream_provider_preferences_cache()
+        provider_key, display_name = identify_stream_provider(
+            self.mirror_info, self.url, self.source_name
+        )
+        preference = preferences.get(provider_key)
+        if preference is None:
+            preference = register_stream_provider(provider_key, display_name)
+            preferences[provider_key] = preference
+
+        is_visible = preference.is_visible if preference else True
+        is_enabled = preference.is_enabled if preference else True
+
         return {
             "id": self.id,
             "episode_id": self.episode_id,
             "source_name": self.source_name,
             "url": self.url,
             "mirror_info": self.mirror_info,
+            "provider_key": provider_key,
+            "provider_display_name": display_name,
+            "provider_visible": bool(is_visible),
+            "provider_enabled": bool(is_enabled),
+        }
+
+
+class StreamProviderPreference(db.Model):
+    __tablename__ = "stream_provider_preferences"
+
+    provider_key = db.Column(db.String(160), primary_key=True)
+    display_name = db.Column(db.String(255))
+    is_visible = db.Column(db.Boolean, nullable=False, default=True)
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "provider_key": self.provider_key,
+            "display_name": self.display_name or self.provider_key,
+            "is_visible": bool(self.is_visible),
+            "is_enabled": bool(self.is_enabled),
         }
 
 
@@ -889,6 +944,330 @@ DATABASE_INDEXES = (
     USER_VIEW_SERIES_INDEX,
     USER_VIEW_EPISODE_INDEX,
 )
+
+
+def _normalize_provider_name(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = re.sub(r"\s+", " ", str(value).strip())
+    return normalized or None
+
+
+def _extract_domain(streaming_url: Optional[str]) -> Optional[str]:
+    if not streaming_url:
+        return None
+    try:
+        parsed = urlparse(streaming_url)
+    except ValueError:
+        return None
+    hostname = parsed.netloc.lower().strip()
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+    return hostname or None
+
+
+def identify_stream_provider(
+    mirror_info: Optional[str],
+    streaming_url: Optional[str],
+    source_name: Optional[str] = None,
+) -> tuple[str, str]:
+    """Return a normalized provider key and a human-readable display name."""
+
+    display_candidates = [
+        _normalize_provider_name(mirror_info),
+        _normalize_provider_name(source_name),
+        _extract_domain(streaming_url),
+    ]
+    display_name = next(
+        (candidate for candidate in display_candidates if candidate),
+        None,
+    )
+    if not display_name:
+        display_name = "Unbekannter Anbieter"
+
+    key_basis = display_name.lower()
+    key = re.sub(r"[^a-z0-9]+", "-", key_basis).strip("-")
+    if not key:
+        fallback = _extract_domain(streaming_url) or (source_name or "provider")
+        key = re.sub(r"[^a-z0-9]+", "-", fallback.lower()).strip("-") or "provider"
+
+    return key, display_name
+
+
+def register_stream_provider(
+    provider_key: str, display_name: Optional[str]
+) -> StreamProviderPreference:
+    """Ensure that a provider preference exists and return it."""
+
+    preference = StreamProviderPreference.query.filter_by(
+        provider_key=provider_key
+    ).first()
+    created_or_updated = False
+    if preference is None:
+        preference = StreamProviderPreference(
+            provider_key=provider_key,
+            display_name=display_name or provider_key,
+        )
+        db.session.add(preference)
+        created_or_updated = True
+    elif display_name and preference.display_name != display_name:
+        preference.display_name = display_name
+        db.session.add(preference)
+        created_or_updated = True
+
+    if created_or_updated:
+        db.session.commit()
+    return preference
+
+
+def get_stream_provider_preferences_cache() -> dict[str, StreamProviderPreference]:
+    cache: Optional[dict[str, StreamProviderPreference]] = getattr(
+        g, "_stream_provider_preferences", None
+    )
+    if cache is None:
+        preferences = StreamProviderPreference.query.all()
+        cache = {preference.provider_key: preference for preference in preferences}
+        g._stream_provider_preferences = cache
+    return cache
+
+
+def invalidate_stream_provider_cache() -> None:
+    if hasattr(g, "_stream_provider_preferences"):
+        delattr(g, "_stream_provider_preferences")
+
+
+def serialize_streaming_links(
+    links: List[object],
+    *,
+    include_invisible: bool = False,
+    include_disabled: bool = False,
+) -> list[dict]:
+    preferences = get_stream_provider_preferences_cache()
+    serialized: list[dict] = []
+    for link in links:
+        mirror_info = getattr(link, "mirror_info", None)
+        streaming_url = getattr(link, "url", None)
+        source_name = getattr(link, "source_name", None)
+        provider_key, display_name = identify_stream_provider(
+            mirror_info, streaming_url, source_name
+        )
+
+        preference = preferences.get(provider_key)
+        if preference is None:
+            preference = register_stream_provider(provider_key, display_name)
+            preferences[provider_key] = preference
+
+        is_visible = preference.is_visible if preference else True
+        is_enabled = preference.is_enabled if preference else True
+
+        if (not include_invisible and not is_visible) or (
+            not include_disabled and not is_enabled
+        ):
+            continue
+
+        payload = {
+            "id": getattr(link, "id", None),
+            "movie_id": getattr(link, "movie_id", None),
+            "episode_id": getattr(link, "episode_id", None),
+            "source_name": source_name,
+            "url": streaming_url,
+            "mirror_info": mirror_info,
+            "provider_key": provider_key,
+            "provider_display_name": display_name,
+            "provider_visible": bool(is_visible),
+            "provider_enabled": bool(is_enabled),
+        }
+        serialized.append(payload)
+    return serialized
+
+
+def filter_visible_streaming_links(links: List[object]) -> list[object]:
+    preferences = get_stream_provider_preferences_cache()
+    visible_links: list[object] = []
+    for link in links:
+        mirror_info = getattr(link, "mirror_info", None)
+        streaming_url = getattr(link, "url", None)
+        source_name = getattr(link, "source_name", None)
+        provider_key, display_name = identify_stream_provider(
+            mirror_info, streaming_url, source_name
+        )
+        preference = preferences.get(provider_key)
+        if preference is None:
+            preference = register_stream_provider(provider_key, display_name)
+            preferences[provider_key] = preference
+
+        if preference and not preference.is_visible:
+            continue
+        visible_links.append(link)
+    return visible_links
+
+
+def collect_stream_provider_stats() -> list[dict]:
+    preferences = get_stream_provider_preferences_cache()
+    stats: dict[str, dict] = {}
+
+    def ensure_entry(provider_key: str, display_name: str) -> dict:
+        preference = preferences.get(provider_key)
+        if preference is None:
+            preference = register_stream_provider(provider_key, display_name)
+            preferences[provider_key] = preference
+        entry = stats.get(provider_key)
+        if entry is None:
+            entry = {
+                "provider_key": provider_key,
+                "display_name": preference.display_name or display_name or provider_key,
+                "is_visible": bool(preference.is_visible if preference else True),
+                "is_enabled": bool(preference.is_enabled if preference else True),
+                "movie_links": 0,
+                "episode_links": 0,
+                "total_links": 0,
+            }
+            stats[provider_key] = entry
+        else:
+            entry["display_name"] = preference.display_name or display_name or provider_key
+            entry["is_visible"] = bool(preference.is_visible if preference else True)
+            entry["is_enabled"] = bool(preference.is_enabled if preference else True)
+        return entry
+
+    movie_links = StreamingLink.query.all()
+    for link in movie_links:
+        provider_key, display_name = identify_stream_provider(
+            link.mirror_info, link.url, link.source_name
+        )
+        entry = ensure_entry(provider_key, display_name)
+        entry["movie_links"] += 1
+        entry["total_links"] += 1
+
+    episode_links = EpisodeStreamingLink.query.all()
+    for link in episode_links:
+        provider_key, display_name = identify_stream_provider(
+            link.mirror_info, link.url, link.source_name
+        )
+        entry = ensure_entry(provider_key, display_name)
+        entry["episode_links"] += 1
+        entry["total_links"] += 1
+
+    for provider_key, preference in preferences.items():
+        if provider_key not in stats:
+            stats[provider_key] = {
+                "provider_key": provider_key,
+                "display_name": preference.display_name or provider_key,
+                "is_visible": bool(preference.is_visible if preference else True),
+                "is_enabled": bool(preference.is_enabled if preference else True),
+                "movie_links": 0,
+                "episode_links": 0,
+                "total_links": 0,
+            }
+
+    return sorted(
+        stats.values(), key=lambda item: (item["display_name"].lower(), item["provider_key"])
+    )
+
+
+def _delete_stream_provider_links(provider_keys: set[str]) -> dict:
+    removed_movie_links = 0
+    removed_episode_links = 0
+
+    movie_links = StreamingLink.query.all()
+    for link in movie_links:
+        provider_key, _ = identify_stream_provider(
+            link.mirror_info, link.url, link.source_name
+        )
+        if provider_key in provider_keys:
+            db.session.delete(link)
+            removed_movie_links += 1
+
+    episode_links = EpisodeStreamingLink.query.all()
+    for link in episode_links:
+        provider_key, _ = identify_stream_provider(
+            link.mirror_info, link.url, link.source_name
+        )
+        if provider_key in provider_keys:
+            db.session.delete(link)
+            removed_episode_links += 1
+
+    db.session.commit()
+    invalidate_stream_provider_cache()
+    return {
+        "removed_movie_links": removed_movie_links,
+        "removed_episode_links": removed_episode_links,
+        "removed_total_links": removed_movie_links + removed_episode_links,
+    }
+
+
+def apply_stream_provider_action(
+    action: str, provider_keys: list[str]
+) -> Tuple[dict, Optional[str], int]:
+    normalized_keys = {
+        key.strip(): key.strip()
+        for key in (provider_keys or [])
+        if isinstance(key, str) and key.strip()
+    }
+
+    if not normalized_keys:
+        preferences = StreamProviderPreference.query.all()
+        normalized_keys = {pref.provider_key: pref.provider_key for pref in preferences}
+
+    if not normalized_keys:
+        return {}, "Keine Anbieter ausgewählt.", 400
+
+    action_normalized = (action or "").strip().lower()
+    valid_actions = {"hide", "show", "disable", "enable", "delete"}
+    if action_normalized not in valid_actions:
+        return {}, "Unbekannte Aktion.", 400
+
+    provider_key_list = list(normalized_keys.keys())
+    preferences = StreamProviderPreference.query.filter(
+        StreamProviderPreference.provider_key.in_(provider_key_list)
+    ).all()
+
+    missing_keys = set(provider_key_list) - {pref.provider_key for pref in preferences}
+    for provider_key in missing_keys:
+        register_stream_provider(provider_key, provider_key)
+    if missing_keys:
+        preferences.extend(
+            StreamProviderPreference.query.filter(
+                StreamProviderPreference.provider_key.in_(missing_keys)
+            ).all()
+        )
+
+    if action_normalized == "hide":
+        for preference in preferences:
+            preference.is_visible = False
+            db.session.add(preference)
+        db.session.commit()
+        invalidate_stream_provider_cache()
+        return {"updated": len(preferences)}, None, 200
+
+    if action_normalized == "show":
+        for preference in preferences:
+            preference.is_visible = True
+            db.session.add(preference)
+        db.session.commit()
+        invalidate_stream_provider_cache()
+        return {"updated": len(preferences)}, None, 200
+
+    if action_normalized == "disable":
+        for preference in preferences:
+            preference.is_enabled = False
+            db.session.add(preference)
+        db.session.commit()
+        invalidate_stream_provider_cache()
+        return {"updated": len(preferences)}, None, 200
+
+    if action_normalized == "enable":
+        for preference in preferences:
+            preference.is_enabled = True
+            db.session.add(preference)
+        db.session.commit()
+        invalidate_stream_provider_cache()
+        return {"updated": len(preferences)}, None, 200
+
+    if action_normalized == "delete":
+        result = _delete_stream_provider_links(set(provider_key_list))
+        return result, None, 200
+
+    return {}, "Aktion konnte nicht ausgeführt werden.", 400
 
 
 def _has_non_empty_text(column):
@@ -1620,8 +1999,19 @@ def attach_movie_streaming_link(
     streaming_url: str,
     mirror_info: Optional[str] = None,
     source_name: str = "Unbekannt",
-) -> StreamingLink:
-    """Create or update a streaming link for a movie based on its title."""
+) -> Tuple[str, Optional[str]]:
+    """Create or update a streaming link for a movie based on its title.
+
+    Returns a tuple of (status, normalized movie title).
+    """
+
+    provider_key, provider_display_name = identify_stream_provider(
+        mirror_info, streaming_url, source_name
+    )
+    preference = register_stream_provider(provider_key, provider_display_name)
+    if preference and not preference.is_enabled:
+        return "skipped", None
+
     normalized_title = (movie_title or "").strip()
     movie: Optional[Movie] = None
     base_title, _ = _extract_title_and_year(normalized_title)
@@ -1685,6 +2075,7 @@ def attach_movie_streaming_link(
     db.session.flush()
 
     link = StreamingLink.query.filter_by(movie_id=movie.id, url=streaming_url).first()
+    status = "exists"
     if link is None:
         link = StreamingLink(
             movie=movie,
@@ -1692,13 +2083,21 @@ def attach_movie_streaming_link(
             source_name=source_name,
             mirror_info=mirror_info,
         )
+        status = "created"
     else:
-        link.source_name = source_name
-        link.mirror_info = mirror_info
+        updated = False
+        if link.source_name != source_name:
+            link.source_name = source_name
+            updated = True
+        if link.mirror_info != mirror_info:
+            link.mirror_info = mirror_info
+            updated = True
+        if updated:
+            status = "updated"
 
     db.session.add(link)
     db.session.commit()
-    return link
+    return status, movie.title
 
 
 def attach_series_streaming_entry(entry: ScraperResult) -> Tuple[str, Optional[str]]:
@@ -1878,6 +2277,13 @@ def attach_series_streaming_entry(entry: ScraperResult) -> Tuple[str, Optional[s
     mirror_info = metadata.get("mirror_info") or entry.mirror_info
     if not mirror_info:
         mirror_info = metadata.get("host_name")
+
+    provider_key, provider_display_name = identify_stream_provider(
+        mirror_info, entry.streaming_url, source_name
+    )
+    preference = register_stream_provider(provider_key, provider_display_name)
+    if preference and not preference.is_enabled:
+        return "skipped", None
 
     link = EpisodeStreamingLink.query.filter_by(
         episode_id=episode.id, url=entry.streaming_url
@@ -2413,21 +2819,44 @@ def _run_scraper(provider: str, start_page: int, include_series: bool = False) -
                                 )
                             continue
 
-                        attach_movie_streaming_link(
+                        status, movie_name = attach_movie_streaming_link(
                             entry.title or title,
                             entry.streaming_url,
                             entry.mirror_info,
                             entry.source_name,
                         )
-                        processed_links += 1
-                        _set_scraper_status(
-                            provider, processed_links=processed_links, error=None
-                        )
-                        _append_scraper_log(
-                            provider,
-                            f"[{provider_label}] Link gespeichert: {title}",
-                            "success",
-                        )
+                        if status == "skipped":
+                            _append_scraper_log(
+                                provider,
+                                f"[{provider_label}] Link übersprungen (Anbieter deaktiviert): {title}",
+                                "info",
+                            )
+                            continue
+
+                        if status in {"created", "updated"}:
+                            processed_links += 1
+                            _set_scraper_status(
+                                provider, processed_links=processed_links, error=None
+                            )
+
+                        if status == "updated":
+                            _append_scraper_log(
+                                provider,
+                                f"[{provider_label}] Link aktualisiert: {movie_name or title}",
+                                "success",
+                            )
+                        elif status == "created":
+                            _append_scraper_log(
+                                provider,
+                                f"[{provider_label}] Link gespeichert: {movie_name or title}",
+                                "success",
+                            )
+                        else:
+                            _append_scraper_log(
+                                provider,
+                                f"[{provider_label}] Link bereits vorhanden: {movie_name or title}",
+                                "info",
+                            )
                     except Exception as exc:  # pragma: no cover - depends on DB state
                         db.session.rollback()
                         _append_scraper_log(
@@ -2621,7 +3050,11 @@ def build_library_context() -> dict:
     if recent_series:
         series_sections.append({"title": "Neu hinzugefügt", "items": recent_series})
 
-    scraped = StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
+    scraped_candidates = (
+        StreamingLink.query.order_by(StreamingLink.id.desc()).limit(100).all()
+    )
+    scraped_visible = filter_visible_streaming_links(scraped_candidates)
+    scraped = scraped_visible[:25]
 
     hero_movies: List[Movie] = []
 
@@ -3049,7 +3482,7 @@ def api_movie_detail(movie_id: int):
         "genres": combined_genres,
         "tagline": tmdb_details.get("tagline"),
         "cast": tmdb_details.get("cast", []),
-        "streaming_links": [link.to_dict() for link in movie.streaming_links],
+        "streaming_links": serialize_streaming_links(movie.streaming_links),
         "trailer": tmdb_details.get("trailer"),
     }
 
@@ -3079,7 +3512,10 @@ def api_series_detail(series_id: int):
     for season in sorted(series.seasons, key=lambda item: item.season_number):
         episodes_payload: List[dict] = []
         for episode in sorted(season.episodes, key=lambda item: item.episode_number):
-            links = [link.to_dict() for link in episode.streaming_links if (link.url or "").strip()]
+            raw_links = [
+                link for link in episode.streaming_links if (link.url or "").strip()
+            ]
+            links = serialize_streaming_links(raw_links)
             if links and default_episode_reference is None:
                 default_episode_reference = {
                     "id": episode.id,
@@ -3399,6 +3835,33 @@ def api_settings():
         response_payload["scrapers"] = scraper_updates
 
     return jsonify({"success": True, "settings": response_payload})
+
+
+@app.route("/api/stream-providers", methods=["GET", "POST"])
+def api_stream_providers():
+    if request.method == "GET":
+        providers = collect_stream_provider_stats()
+        return jsonify({"success": True, "providers": providers})
+
+    data = request.get_json(silent=True) or {}
+    action = data.get("action")
+    provider_keys = data.get("provider_keys")
+    if provider_keys is not None and not isinstance(provider_keys, list):
+        return (
+            jsonify({"success": False, "error": "provider_keys muss eine Liste sein."}),
+            400,
+        )
+
+    result, error, status_code = apply_stream_provider_action(
+        action, provider_keys or []
+    )
+    if status_code != 200:
+        return jsonify({"success": False, "error": error or "Unbekannter Fehler."}), status_code
+
+    providers = collect_stream_provider_stats()
+    payload = {"success": True, "providers": providers}
+    payload.update(result)
+    return jsonify(payload)
 
 
 ensure_database()

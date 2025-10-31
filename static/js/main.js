@@ -123,6 +123,9 @@ document.querySelectorAll('[data-scraper-next]').forEach((input) => {
     scraperNextInputs.set(provider, input);
   }
 });
+const providerCockpit = document.querySelector('[data-provider-cockpit]');
+const providerList = providerCockpit?.querySelector('[data-role="provider-list"]');
+const providerEmptyState = providerCockpit?.querySelector('[data-role="provider-empty"]');
 const allMoviesSortButtons = document.querySelectorAll('[data-sort-option]');
 const ALL_MOVIES_PAGE_SIZE = 100;
 const ALL_MOVIES_RUNTIME_CHUNK_SIZE = 25;
@@ -172,6 +175,8 @@ let heroSlides = [];
 let heroActiveIndex = 0;
 let heroRotationTimeout = null;
 const allMoviesRuntimeCache = new Map();
+let currentStreamProviders = [];
+let streamProviderLoading = false;
 
 function recordContentView(payload) {
   if (!payload || typeof payload !== 'object') {
@@ -811,6 +816,307 @@ async function callApi(url, options = {}) {
     showToast(error.message, 'error');
     throw error;
   }
+}
+
+function setProviderCockpitLoading(isLoading) {
+  if (!providerCockpit) {
+    return;
+  }
+  streamProviderLoading = Boolean(isLoading);
+  providerCockpit.dataset.loading = streamProviderLoading ? 'true' : 'false';
+  const actionButtons = providerCockpit.querySelectorAll('button[data-provider-action]');
+  actionButtons.forEach((button) => {
+    button.disabled = streamProviderLoading;
+  });
+  if (providerEmptyState && (!currentStreamProviders.length || streamProviderLoading)) {
+    providerEmptyState.textContent = streamProviderLoading
+      ? 'Anbieter werden geladen…'
+      : 'Keine Stream-Anbieter gefunden.';
+  }
+}
+
+function createProviderStat(label, value) {
+  const wrapper = document.createElement('div');
+  const term = document.createElement('dt');
+  term.textContent = label;
+  const description = document.createElement('dd');
+  description.textContent = Number.isFinite(value) ? value : 0;
+  wrapper.appendChild(term);
+  wrapper.appendChild(description);
+  return wrapper;
+}
+
+function createProviderActionButton(provider, action, label, icon, { variant } = {}) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.classList.add('chip');
+  if (variant) {
+    button.classList.add(`chip--${variant}`);
+  }
+  button.dataset.providerAction = action;
+  if (provider?.provider_key) {
+    button.dataset.providerKey = provider.provider_key;
+  }
+
+  const iconSpan = document.createElement('span');
+  iconSpan.classList.add('material-symbols-outlined');
+  iconSpan.setAttribute('aria-hidden', 'true');
+  iconSpan.textContent = icon;
+
+  const labelSpan = document.createElement('span');
+  labelSpan.textContent = label;
+
+  button.appendChild(iconSpan);
+  button.appendChild(labelSpan);
+  return button;
+}
+
+function renderStreamProviders(providers = currentStreamProviders) {
+  if (!providerCockpit || !providerList || !providerEmptyState) {
+    return;
+  }
+
+  providerList.innerHTML = '';
+  const items = Array.isArray(providers) ? providers : [];
+  if (!items.length) {
+    providerEmptyState.hidden = false;
+    providerList.hidden = true;
+    providerEmptyState.textContent = streamProviderLoading
+      ? 'Anbieter werden geladen…'
+      : 'Keine Stream-Anbieter gefunden.';
+    return;
+  }
+
+  providerEmptyState.hidden = true;
+  providerList.hidden = false;
+
+  items.forEach((provider) => {
+    const item = document.createElement('li');
+    item.classList.add('stream-provider-card');
+    item.dataset.providerKey = provider.provider_key || '';
+
+    const head = document.createElement('div');
+    head.classList.add('stream-provider-card__head');
+
+    const titleWrapper = document.createElement('div');
+    const title = document.createElement('h3');
+    title.textContent = provider.display_name || provider.provider_key || 'Unbekannter Anbieter';
+    titleWrapper.appendChild(title);
+
+    const subtitle = document.createElement('p');
+    subtitle.classList.add('stream-provider-card__subtitle');
+    subtitle.textContent = `Gesamt: ${Number(provider.total_links || 0)}`;
+    titleWrapper.appendChild(subtitle);
+
+    const badges = document.createElement('div');
+    badges.classList.add('stream-provider-card__badges');
+
+    const visibilityBadge = document.createElement('span');
+    visibilityBadge.classList.add('stream-provider-card__badge');
+    visibilityBadge.dataset.state = provider.is_visible ? 'visible' : 'hidden';
+    visibilityBadge.textContent = provider.is_visible ? 'Sichtbar' : 'Ausgeblendet';
+    badges.appendChild(visibilityBadge);
+
+    const enabledBadge = document.createElement('span');
+    enabledBadge.classList.add('stream-provider-card__badge');
+    enabledBadge.dataset.state = provider.is_enabled ? 'enabled' : 'disabled';
+    enabledBadge.textContent = provider.is_enabled ? 'Aktiv' : 'Deaktiviert';
+    badges.appendChild(enabledBadge);
+
+    head.appendChild(titleWrapper);
+    head.appendChild(badges);
+
+    const stats = document.createElement('dl');
+    stats.classList.add('stream-provider-card__stats');
+    stats.appendChild(createProviderStat('Filme', Number(provider.movie_links || 0)));
+    stats.appendChild(createProviderStat('Serien', Number(provider.episode_links || 0)));
+    stats.appendChild(createProviderStat('Gesamt', Number(provider.total_links || 0)));
+
+    const actions = document.createElement('div');
+    actions.classList.add('stream-provider-card__actions');
+
+    const hideButton = createProviderActionButton(
+      provider,
+      'hide',
+      'Nicht anzeigen',
+      'visibility_off'
+    );
+    hideButton.hidden = !provider.is_visible;
+    actions.appendChild(hideButton);
+
+    const showButton = createProviderActionButton(
+      provider,
+      'show',
+      'Anzeigen',
+      'visibility'
+    );
+    showButton.hidden = provider.is_visible;
+    actions.appendChild(showButton);
+
+    const disableButton = createProviderActionButton(
+      provider,
+      'disable',
+      'Deaktivieren',
+      'power_off'
+    );
+    disableButton.hidden = !provider.is_enabled;
+    actions.appendChild(disableButton);
+
+    const enableButton = createProviderActionButton(
+      provider,
+      'enable',
+      'Aktivieren',
+      'power_settings_new'
+    );
+    enableButton.hidden = provider.is_enabled;
+    actions.appendChild(enableButton);
+
+    const deleteButton = createProviderActionButton(
+      provider,
+      'delete',
+      'Links löschen',
+      'delete',
+      { variant: 'danger' }
+    );
+    actions.appendChild(deleteButton);
+
+    item.appendChild(head);
+    item.appendChild(stats);
+    item.appendChild(actions);
+
+    providerList.appendChild(item);
+  });
+}
+
+async function fetchStreamProviders({ silent = false } = {}) {
+  if (!providerCockpit) {
+    return;
+  }
+
+  if (!silent) {
+    setProviderCockpitLoading(true);
+  }
+
+  try {
+    const response = await fetch('/api/stream-providers', {
+      headers: { Accept: 'application/json' },
+    });
+    const payload = await response.json().catch(() => ({ success: false }));
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || 'Anbieter konnten nicht geladen werden.');
+    }
+    currentStreamProviders = Array.isArray(payload.providers)
+      ? payload.providers
+      : [];
+    renderStreamProviders();
+  } catch (error) {
+    console.error(error);
+    if (!silent) {
+      showToast(error.message || 'Anbieter konnten nicht geladen werden.', 'error');
+    }
+  } finally {
+    if (!silent) {
+      setProviderCockpitLoading(false);
+    }
+  }
+}
+
+async function performStreamProviderAction(action, providerKeys = []) {
+  if (!providerCockpit) {
+    return;
+  }
+
+  setProviderCockpitLoading(true);
+
+  try {
+    const response = await fetch('/api/stream-providers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, provider_keys: providerKeys }),
+    });
+    const payload = await response.json().catch(() => ({ success: false }));
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || 'Aktion fehlgeschlagen.');
+    }
+
+    currentStreamProviders = Array.isArray(payload.providers)
+      ? payload.providers
+      : [];
+    renderStreamProviders();
+
+    let message = 'Aktion erfolgreich.';
+    if (action === 'delete') {
+      const removed = Number(payload.removed_total_links || 0);
+      message = removed
+        ? `${removed} Links gelöscht.`
+        : 'Keine Links gelöscht.';
+    } else if (payload.updated !== undefined) {
+      const updated = Number(payload.updated || 0);
+      message = updated === 1 ? '1 Anbieter aktualisiert.' : `${updated} Anbieter aktualisiert.`;
+    }
+    showToast(message, 'success');
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || 'Aktion fehlgeschlagen.', 'error');
+  } finally {
+    setProviderCockpitLoading(false);
+  }
+}
+
+function handleProviderCockpitClick(event) {
+  if (!providerCockpit) {
+    return;
+  }
+  const button = event.target.closest('button[data-provider-action]');
+  if (!button || !providerCockpit.contains(button) || streamProviderLoading) {
+    return;
+  }
+
+  const action = button.dataset.providerAction;
+  if (!action) {
+    return;
+  }
+
+  if (action === 'refresh') {
+    fetchStreamProviders();
+    return;
+  }
+
+  if (action === 'delete-all') {
+    const confirmed = window.confirm(
+      'Alle Streaming-Links sämtlicher Anbieter löschen? Dieser Vorgang kann nicht rückgängig gemacht werden.'
+    );
+    if (!confirmed) {
+      return;
+    }
+    performStreamProviderAction('delete', []);
+    return;
+  }
+
+  const providerKey = button.dataset.providerKey;
+  if (!providerKey) {
+    return;
+  }
+
+  if (action === 'delete') {
+    const confirmed = window.confirm(
+      'Alle Links dieses Anbieters löschen? Dieser Vorgang kann nicht rückgängig gemacht werden.'
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  performStreamProviderAction(action, [providerKey]);
+}
+
+function initStreamProviderCockpit() {
+  if (!providerCockpit) {
+    return;
+  }
+  renderStreamProviders();
+  providerCockpit.addEventListener('click', handleProviderCockpitClick);
+  fetchStreamProviders();
 }
 
 function resetSearchHighlight() {
@@ -3546,6 +3852,7 @@ initAllMoviesSort();
 initMediaRails();
 initHero();
 initScraperStatus();
+initStreamProviderCockpit();
 loadSettings();
 if (document.body?.dataset?.loadAllMovies === 'true') {
   ensureAllMoviesLoaded();
