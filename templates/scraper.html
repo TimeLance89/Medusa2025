@@ -173,27 +173,43 @@
 </section>
 
 <section class="scraper-layout">
-    <div class="surface scraper-summary" id="scraperGlobalPanel">
-        <header class="scraper-summary__header">
-            <div>
-                <h2>Überblick</h2>
-                <p class="scraper-summary__description">Starte alle verfügbaren Film-Scraper gesammelt oder behalte den Fortschritt einzelner Läufe im Blick.</p>
+    <div class="scraper-sidebar">
+        <div class="surface scraper-summary" id="scraperGlobalPanel">
+            <header class="scraper-summary__header">
+                <div>
+                    <h2>Überblick</h2>
+                    <p class="scraper-summary__description">Starte alle verfügbaren Film-Scraper gesammelt oder behalte den Fortschritt einzelner Läufe im Blick.</p>
+                </div>
+            </header>
+            <dl class="scraper-summary__metrics">
+                <div>
+                    <dt>Aktive Scraper</dt>
+                    <dd>{{ summary.running }}</dd>
+                </div>
+                <div>
+                    <dt>Abgeschlossene Läufe</dt>
+                    <dd>{{ summary.completed }}</dd>
+                </div>
+                <div>
+                    <dt>Gespeicherte Links</dt>
+                    <dd>{{ total_links }}</dd>
+                </div>
+            </dl>
+        </div>
+
+        <section class="surface scraper-providers" id="streamProviderPanel" data-provider-panel>
+            <header class="scraper-providers__header">
+                <div>
+                    <h2>Anbieter-Kontrolle</h2>
+                    <p class="scraper-providers__description">Verwalte alle verfügbaren Stream-Anbieter und bestimme, was mit ihren Links geschieht.</p>
+                </div>
+            </header>
+            <div class="scraper-providers__body">
+                <p class="scraper-providers__empty" data-role="provider-empty">Noch keine Streaming-Anbieter verfügbar.</p>
+                <div class="scraper-providers__loading" data-role="provider-loading" hidden>Streaming-Anbieter werden geladen…</div>
+                <ul class="scraper-providers__list" data-role="provider-table-body"></ul>
             </div>
-        </header>
-        <dl class="scraper-summary__metrics">
-            <div>
-                <dt>Aktive Scraper</dt>
-                <dd>{{ summary.running }}</dd>
-            </div>
-            <div>
-                <dt>Abgeschlossene Läufe</dt>
-                <dd>{{ summary.completed }}</dd>
-            </div>
-            <div>
-                <dt>Gespeicherte Links</dt>
-                <dd>{{ total_links }}</dd>
-            </div>
-        </dl>
+        </section>
     </div>
 
     <div class="scraper-panels">
