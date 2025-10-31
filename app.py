@@ -1,16 +1,17 @@
 import glob
+import json
 import os
 import re
 import time
 from collections import deque
 from datetime import date, datetime
 from threading import Lock, Thread
-from typing import List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import requests
 from flask import Flask, jsonify, render_template, request, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import case, func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import selectinload
@@ -619,6 +620,7 @@ class Movie(db.Model):
     )
 
     def to_dict(self) -> dict:
+        visible_links = filter_streaming_links_for_display(self.streaming_links)
         return {
             "id": self.id,
             "tmdb_id": self.tmdb_id,
@@ -629,7 +631,7 @@ class Movie(db.Model):
             "release_date": self.release_date,
             "rating": self.rating,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "streaming_links": [link.to_dict() for link in self.streaming_links],
+            "streaming_links": [link.to_dict() for link in visible_links],
             "genres": [genre.name for genre in self.genres if genre.name],
         }
 
@@ -897,15 +899,23 @@ def _has_non_empty_text(column):
 
 
 def movie_has_valid_streaming_link():
-    return Movie.streaming_links.any(_has_non_empty_text(StreamingLink.url))
+    filters = [_has_non_empty_text(StreamingLink.url)]
+    disabled_names = _get_disabled_provider_name_set()
+    if disabled_names:
+        filters.append(~func.lower(StreamingLink.source_name).in_(tuple(disabled_names)))
+    condition = and_(*filters) if len(filters) > 1 else filters[0]
+    return Movie.streaming_links.any(condition)
 
 
 def series_has_valid_streaming_link():
+    disabled_names = _get_disabled_provider_name_set()
+    filters = [_has_non_empty_text(EpisodeStreamingLink.url)]
+    if disabled_names:
+        filters.append(~func.lower(EpisodeStreamingLink.source_name).in_(tuple(disabled_names)))
+    condition = and_(*filters) if len(filters) > 1 else filters[0]
     return Series.seasons.any(
         SeriesSeason.episodes.any(
-            SeriesEpisode.streaming_links.any(
-                _has_non_empty_text(EpisodeStreamingLink.url)
-            )
+            SeriesEpisode.streaming_links.any(condition)
         )
     )
 
@@ -938,6 +948,229 @@ def get_scraper_int_setting(provider: str, suffix: str, default: int) -> int:
 
 def set_scraper_setting(provider: str, suffix: str, value: int) -> None:
     set_setting(_scraper_setting_key(provider, suffix), str(value))
+
+
+STREAM_PROVIDER_STATE_PREFIX = "stream_provider_state:"
+STREAM_PROVIDER_ALIASES_PREFIX = "stream_provider_aliases:"
+STREAM_PROVIDER_DEFAULT_STATE = "active"
+STREAM_PROVIDER_ALLOWED_STATES = {"active", "inactive", "hidden"}
+STREAM_PROVIDER_STATUS_LABELS = {
+    "active": "Aktiv",
+    "inactive": "Deaktiviert",
+    "hidden": "Ausgeblendet",
+}
+STREAM_PROVIDER_ACTIONS_BY_STATE = {
+    "active": ["deactivate", "hide", "delete"],
+    "inactive": ["activate", "hide", "delete"],
+    "hidden": ["activate", "deactivate", "delete"],
+}
+
+
+def _normalize_stream_provider_identifier(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", "-", name.strip().lower())
+    normalized = normalized.strip("-")
+    return normalized or None
+
+
+def _ensure_unique_aliases(values: Iterable[str]) -> list[str]:
+    seen: Set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(cleaned)
+    return result
+
+
+def set_stream_provider_aliases(identifier: str, aliases: Iterable[str]) -> None:
+    normalized_aliases = _ensure_unique_aliases(aliases)
+    key = f"{STREAM_PROVIDER_ALIASES_PREFIX}{identifier}"
+    set_setting(key, json.dumps(normalized_aliases))
+
+
+def get_stream_provider_aliases(identifier: str) -> Set[str]:
+    key = f"{STREAM_PROVIDER_ALIASES_PREFIX}{identifier}"
+    raw_value = get_setting(key)
+    if not raw_value:
+        return set()
+    try:
+        loaded = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(loaded, list):
+        return set()
+    return set(_ensure_unique_aliases(str(item) for item in loaded))
+
+
+def get_stream_provider_states() -> Dict[str, str]:
+    prefix = STREAM_PROVIDER_STATE_PREFIX
+    entries = Setting.query.filter(Setting.key.like(f"{prefix}%")).all()
+    result: Dict[str, str] = {}
+    for entry in entries:
+        identifier = entry.key[len(prefix) :]
+        state = (entry.value or "").strip().lower()
+        if state in STREAM_PROVIDER_ALLOWED_STATES:
+            result[identifier] = state
+    return result
+
+
+def get_stream_provider_state(identifier: str) -> str:
+    states = get_stream_provider_states()
+    return states.get(identifier, STREAM_PROVIDER_DEFAULT_STATE)
+
+
+def set_stream_provider_state(
+    identifier: str, state: str, aliases: Optional[Iterable[str]] = None
+) -> None:
+    normalized_state = (state or "").strip().lower()
+    if normalized_state not in STREAM_PROVIDER_ALLOWED_STATES:
+        normalized_state = STREAM_PROVIDER_DEFAULT_STATE
+    key = f"{STREAM_PROVIDER_STATE_PREFIX}{identifier}"
+    set_setting(key, normalized_state)
+    if aliases is not None:
+        set_stream_provider_aliases(identifier, aliases)
+
+
+def get_stream_provider_registry() -> Dict[str, dict]:
+    registry: Dict[str, dict] = {}
+
+    def _register(name: Optional[str], display_hint: Optional[str] = None) -> None:
+        identifier = _normalize_stream_provider_identifier(name)
+        if not identifier:
+            return
+        alias = name.strip()
+        entry = registry.setdefault(
+            identifier,
+            {
+                "identifier": identifier,
+                "display_name": None,
+                "aliases": set(),
+            },
+        )
+        entry["aliases"].add(alias)
+        if display_hint and not entry["display_name"]:
+            entry["display_name"] = display_hint.strip()
+        elif not entry["display_name"]:
+            entry["display_name"] = alias
+
+    for scraper in SCRAPER_MANAGER.available_providers():
+        label = (scraper.label or scraper.name or "").strip()
+        name = (scraper.name or "").strip()
+        if label:
+            _register(label, label)
+        if name and name.lower() != label.lower():
+            _register(name, label or name)
+
+    for (name,) in db.session.query(StreamingLink.source_name).distinct():
+        if name:
+            _register(name)
+
+    for (name,) in db.session.query(EpisodeStreamingLink.source_name).distinct():
+        if name:
+            _register(name)
+
+    for entry in registry.values():
+        if not entry["display_name"]:
+            entry["display_name"] = entry["identifier"].replace("-", " ").title()
+        entry["aliases"] = sorted(entry["aliases"], key=lambda alias: alias.lower())
+
+    return registry
+
+
+def _get_disabled_stream_provider_aliases() -> Set[str]:
+    states = get_stream_provider_states()
+    disabled_identifiers = [
+        identifier for identifier, state in states.items() if state != STREAM_PROVIDER_DEFAULT_STATE
+    ]
+    if not disabled_identifiers:
+        return set()
+
+    aliases: Set[str] = set()
+    registry: Optional[Dict[str, dict]] = None
+    for identifier in disabled_identifiers:
+        stored_aliases = get_stream_provider_aliases(identifier)
+        if stored_aliases:
+            aliases.update(stored_aliases)
+            continue
+        if registry is None:
+            registry = get_stream_provider_registry()
+        entry = registry.get(identifier)
+        if entry:
+            aliases.update(entry["aliases"])
+            set_stream_provider_aliases(identifier, entry["aliases"])
+    return {alias for alias in aliases if alias}
+
+
+def _get_disabled_provider_name_set() -> Set[str]:
+    aliases = _get_disabled_stream_provider_aliases()
+    return {alias.strip().lower() for alias in aliases if alias and alias.strip()}
+
+
+def filter_streaming_links_for_display(links: Iterable) -> list:
+    if links is None:
+        return []
+    link_list = list(links)
+    disabled_names = _get_disabled_provider_name_set()
+    if not disabled_names:
+        return link_list
+    filtered = []
+    for link in link_list:
+        source_name = getattr(link, "source_name", None)
+        normalized = source_name.strip().lower() if isinstance(source_name, str) else ""
+        if normalized and normalized in disabled_names:
+            continue
+        filtered.append(link)
+    return filtered
+
+
+def get_stream_provider_overview() -> list[dict[str, object]]:
+    registry = get_stream_provider_registry()
+    states = get_stream_provider_states()
+
+    movie_counts = dict(
+        db.session.query(StreamingLink.source_name, func.count(StreamingLink.id))
+        .group_by(StreamingLink.source_name)
+        .all()
+    )
+    episode_counts = dict(
+        db.session.query(EpisodeStreamingLink.source_name, func.count(EpisodeStreamingLink.id))
+        .group_by(EpisodeStreamingLink.source_name)
+        .all()
+    )
+
+    overview: list[dict[str, object]] = []
+    for identifier, entry in registry.items():
+        aliases = entry.get("aliases", [])
+        state = states.get(identifier, STREAM_PROVIDER_DEFAULT_STATE)
+        movie_total = sum(int(movie_counts.get(alias, 0) or 0) for alias in aliases)
+        episode_total = sum(int(episode_counts.get(alias, 0) or 0) for alias in aliases)
+        total_links = movie_total + episode_total
+        available_actions = STREAM_PROVIDER_ACTIONS_BY_STATE.get(state, ["activate", "delete"])
+        overview.append(
+            {
+                "identifier": identifier,
+                "name": entry.get("display_name", identifier),
+                "aliases": aliases,
+                "status": state,
+                "status_label": STREAM_PROVIDER_STATUS_LABELS.get(state, state.title()),
+                "movie_links": movie_total,
+                "episode_links": episode_total,
+                "total_links": total_links,
+                "available_actions": available_actions,
+            }
+        )
+
+    overview.sort(key=lambda item: (-item["total_links"], item["name"].lower()))
+    return overview
 
 
 def _get_scraper_categories(scraper: BaseScraper) -> Tuple[str, ...]:
@@ -2621,7 +2854,9 @@ def build_library_context() -> dict:
     if recent_series:
         series_sections.append({"title": "Neu hinzugefügt", "items": recent_series})
 
-    scraped = StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
+    scraped = filter_streaming_links_for_display(
+        StreamingLink.query.order_by(StreamingLink.id.desc()).limit(25).all()
+    )
 
     hero_movies: List[Movie] = []
 
@@ -3037,6 +3272,8 @@ def api_movie_detail(movie_id: int):
     poster_url = build_tmdb_image(movie.poster_path)
     backdrop_url = build_tmdb_image(movie.backdrop_path, "w1280")
 
+    visible_links = filter_streaming_links_for_display(movie.streaming_links)
+
     movie_payload = {
         "id": movie.id,
         "title": movie.title,
@@ -3049,7 +3286,7 @@ def api_movie_detail(movie_id: int):
         "genres": combined_genres,
         "tagline": tmdb_details.get("tagline"),
         "cast": tmdb_details.get("cast", []),
-        "streaming_links": [link.to_dict() for link in movie.streaming_links],
+        "streaming_links": [link.to_dict() for link in visible_links],
         "trailer": tmdb_details.get("trailer"),
     }
 
@@ -3079,7 +3316,11 @@ def api_series_detail(series_id: int):
     for season in sorted(series.seasons, key=lambda item: item.season_number):
         episodes_payload: List[dict] = []
         for episode in sorted(season.episodes, key=lambda item: item.episode_number):
-            links = [link.to_dict() for link in episode.streaming_links if (link.url or "").strip()]
+            episode_links = [
+                link for link in episode.streaming_links if (link.url or "").strip()
+            ]
+            visible_episode_links = filter_streaming_links_for_display(episode_links)
+            links = [link.to_dict() for link in visible_episode_links]
             if links and default_episode_reference is None:
                 default_episode_reference = {
                     "id": episode.id,
@@ -3247,6 +3488,86 @@ def api_scrape_all():
 @app.route("/api/scrape/status")
 def api_scrape_status():
     return jsonify({"success": True, "status": get_scraper_status()})
+
+
+@app.route("/api/stream-providers")
+def api_stream_providers():
+    overview = get_stream_provider_overview()
+    return jsonify({"success": True, "providers": overview})
+
+
+@app.route("/api/stream-providers/<identifier>", methods=["POST"])
+def api_stream_provider_action(identifier: str):
+    identifier = (_normalize_stream_provider_identifier(identifier) or identifier).strip()
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip().lower()
+
+    if action not in {"activate", "deactivate", "hide", "delete"}:
+        return (
+            jsonify({"success": False, "message": "Ungültige Aktion."}),
+            400,
+        )
+
+    registry = get_stream_provider_registry()
+    entry = registry.get(identifier)
+    if entry is None:
+        return (
+            jsonify({"success": False, "message": "Unbekannter Anbieter."}),
+            404,
+        )
+
+    aliases = entry.get("aliases", [])
+    previous_state = get_stream_provider_state(identifier)
+    message = None
+
+    try:
+        if action == "activate":
+            set_stream_provider_state(identifier, "active", aliases)
+            message = f"{entry['name']} wurde aktiviert."
+        elif action == "deactivate":
+            set_stream_provider_state(identifier, "inactive", aliases)
+            message = (
+                f"{entry['name']} wurde deaktiviert. Links werden nicht mehr angezeigt."
+            )
+        elif action == "hide":
+            set_stream_provider_state(identifier, "hidden", aliases)
+            message = f"{entry['name']} wird nicht mehr angezeigt."
+        elif action == "delete":
+            lower_aliases = [alias.lower() for alias in aliases if alias]
+            removed_movie_links = 0
+            removed_episode_links = 0
+            if lower_aliases:
+                removed_movie_links = (
+                    db.session.query(StreamingLink)
+                    .filter(func.lower(StreamingLink.source_name).in_(lower_aliases))
+                    .delete(synchronize_session=False)
+                )
+                removed_episode_links = (
+                    db.session.query(EpisodeStreamingLink)
+                    .filter(
+                        func.lower(EpisodeStreamingLink.source_name).in_(lower_aliases)
+                    )
+                    .delete(synchronize_session=False)
+                )
+            db.session.commit()
+            set_stream_provider_state(identifier, previous_state, aliases)
+            removed_total = int(removed_movie_links or 0) + int(removed_episode_links or 0)
+            message = (
+                f"Alle Links ({removed_total}) von {entry['name']} wurden gelöscht."
+            )
+    except Exception as exc:  # pragma: no cover - depends on DB backend
+        db.session.rollback()
+        app.logger.exception("Provider action failed: %s", exc)
+        return (
+            jsonify({"success": False, "message": "Aktion fehlgeschlagen."}),
+            500,
+        )
+
+    overview = get_stream_provider_overview()
+    response_payload = {"success": True, "providers": overview}
+    if message:
+        response_payload["message"] = message
+    return jsonify(response_payload)
 
 
 @app.route("/api/reset/scraped", methods=["POST"])
