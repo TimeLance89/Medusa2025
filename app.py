@@ -2047,33 +2047,33 @@ def _start_scraper(
 
 
 def _run_filmpalast_series_scraper(provider: str, start_page: int) -> None:
-    with app.app_context():
-        scraper = SCRAPER_MANAGER.get_scraper(provider)
-        if scraper is None:
-            _append_scraper_log(provider, f"Unbekannter Scraper: {provider}", "error")
-            _set_scraper_status(
-                provider,
-                running=False,
-                error="Scraper nicht gefunden.",
-                message="Scraper nicht verfügbar.",
-                finished_at=_now_iso(),
-            )
-            return
+    scraper = SCRAPER_MANAGER.get_scraper(provider)
+    if scraper is None:
+        _append_scraper_log(provider, f"Unbekannter Scraper: {provider}", "error")
+        _set_scraper_status(
+            provider,
+            running=False,
+            error="Scraper nicht gefunden.",
+            message="Scraper nicht verfügbar.",
+            finished_at=_now_iso(),
+        )
+        return
 
-        provider_label = scraper.label
-        scope_label = _describe_scraper_scope(scraper, include_series=False)
-        scope_log_suffix = f" ({scope_label})" if scope_label else ""
-        scope_message_suffix = f" · {scope_label}" if scope_label else ""
+    provider_label = scraper.label
+    scope_label = _describe_scraper_scope(scraper, include_series=False)
+    scope_log_suffix = f" ({scope_label})" if scope_label else ""
+    scope_message_suffix = f" · {scope_label}" if scope_label else ""
 
-        stats_counter = {
-            "created": 0,
-            "updated": 0,
-            "exists": 0,
-            "skipped": 0,
-            "errors": 0,
-        }
+    stats_counter = {
+        "created": 0,
+        "updated": 0,
+        "exists": 0,
+        "skipped": 0,
+        "errors": 0,
+    }
 
-        try:
+    try:
+        with app.app_context():
             _append_scraper_log(
                 provider,
                 f"[{provider_label}{scope_log_suffix}] Seite {start_page} wird verarbeitet…",
@@ -2221,44 +2221,44 @@ def _run_filmpalast_series_scraper(provider: str, start_page: int) -> None:
                 finished_at=_now_iso(),
                 total_pages=1,
             )
-        finally:
-            db.session.remove()
-            with SCRAPER_STATUS_LOCK:
-                SCRAPER_THREADS.pop(provider, None)
-                still_running = SCRAPER_STATUS.get(provider, {}).get("running")
-            if still_running:
-                _set_scraper_status(
-                    provider,
-                    running=False,
-                    message=f"{provider_label}: Scraper angehalten.",
-                    finished_at=_now_iso(),
-                )
-
-
-def _run_scraper(provider: str, start_page: int, include_series: bool = False) -> None:
-    with app.app_context():
-        processed_links = 0
-        processed_pages = 0
-        page = start_page
-        last_completed_page: Optional[int] = None
-        finished_naturally = False
-        scraper = SCRAPER_MANAGER.get_scraper(provider)
-        if scraper is None:
-            _append_scraper_log(provider, f"Unbekannter Scraper: {provider}", "error")
+    finally:
+        db.session.remove()
+        with SCRAPER_STATUS_LOCK:
+            SCRAPER_THREADS.pop(provider, None)
+            still_running = SCRAPER_STATUS.get(provider, {}).get("running")
+        if still_running:
             _set_scraper_status(
                 provider,
                 running=False,
-                error="Scraper nicht gefunden.",
-                message="Scraper nicht verfügbar.",
+                message=f"{provider_label}: Scraper angehalten.",
                 finished_at=_now_iso(),
             )
-            return
-        provider_label = scraper.label
-        scope_label = _describe_scraper_scope(scraper, include_series)
-        scope_log_suffix = f" ({scope_label})" if scope_label else ""
-        scope_message_suffix = f" · {scope_label}" if scope_label else ""
 
-        try:
+
+def _run_scraper(provider: str, start_page: int, include_series: bool = False) -> None:
+    processed_links = 0
+    processed_pages = 0
+    page = start_page
+    last_completed_page: Optional[int] = None
+    finished_naturally = False
+    scraper = SCRAPER_MANAGER.get_scraper(provider)
+    if scraper is None:
+        _append_scraper_log(provider, f"Unbekannter Scraper: {provider}", "error")
+        _set_scraper_status(
+            provider,
+            running=False,
+            error="Scraper nicht gefunden.",
+            message="Scraper nicht verfügbar.",
+            finished_at=_now_iso(),
+        )
+        return
+    provider_label = scraper.label
+    scope_label = _describe_scraper_scope(scraper, include_series)
+    scope_log_suffix = f" ({scope_label})" if scope_label else ""
+    scope_message_suffix = f" · {scope_label}" if scope_label else ""
+
+    try:
+        with app.app_context():
             while True:
                 _append_scraper_log(
                     provider,
@@ -2484,18 +2484,18 @@ def _run_scraper(provider: str, start_page: int, include_series: bool = False) -
                     f"[{provider_label}{scope_log_suffix}] Scraper abgeschlossen. Verarbeitete Seiten: {processed_pages}, neue Links: {processed_links}.",
                     "success",
                 )
-        finally:
-            db.session.remove()
-            with SCRAPER_STATUS_LOCK:
-                SCRAPER_THREADS.pop(provider, None)
-                still_running = SCRAPER_STATUS.get(provider, {}).get("running")
-            if still_running:
-                _set_scraper_status(
-                    provider,
-                    running=False,
-                    message=f"{provider_label}: Scraper angehalten.",
-                    finished_at=_now_iso(),
-                )
+    finally:
+        db.session.remove()
+        with SCRAPER_STATUS_LOCK:
+            SCRAPER_THREADS.pop(provider, None)
+            still_running = SCRAPER_STATUS.get(provider, {}).get("running")
+        if still_running:
+            _set_scraper_status(
+                provider,
+                running=False,
+                message=f"{provider_label}: Scraper angehalten.",
+                finished_at=_now_iso(),
+            )
 
 
 def _start_multiple_scrapers(start_pages: Optional[dict[str, int]] = None) -> dict[str, bool]:
