@@ -123,17 +123,6 @@ document.querySelectorAll('[data-scraper-next]').forEach((input) => {
     scraperNextInputs.set(provider, input);
   }
 });
-const scraperHostCheckboxes = new Map();
-document
-  .querySelectorAll('[data-scraper-host-checkbox]')
-  .forEach((checkbox) => {
-    const provider = checkbox.dataset.provider;
-    if (!provider) return;
-    if (!scraperHostCheckboxes.has(provider)) {
-      scraperHostCheckboxes.set(provider, []);
-    }
-    scraperHostCheckboxes.get(provider).push(checkbox);
-  });
 const providerCockpit = document.querySelector('[data-provider-cockpit]');
 const providerList = providerCockpit?.querySelector('[data-role="provider-list"]');
 const providerEmptyState = providerCockpit?.querySelector('[data-role="provider-empty"]');
@@ -2435,24 +2424,6 @@ function refreshScraperSettingsUi() {
     const lastValue = Number(settings.last_page);
     label.textContent = Number.isFinite(lastValue) && lastValue > 0 ? String(lastValue) : '–';
   });
-
-  scraperHostCheckboxes.forEach((checkboxes, provider) => {
-    const settings = currentSettings.scrapers?.[provider] || {};
-    const hostList = Array.isArray(settings.stream_hosts)
-      ? settings.stream_hosts
-      : null;
-    const streamHosts = new Set(hostList || []);
-    const hasSelection = hostList !== null;
-    checkboxes.forEach((checkbox) => {
-      const defaultEnabled = checkbox.dataset.defaultEnabled === 'true';
-      const shouldCheck = hasSelection
-        ? streamHosts.has(checkbox.value)
-        : defaultEnabled;
-      if (document.activeElement !== checkbox) {
-        checkbox.checked = shouldCheck;
-      }
-    });
-  });
 }
 
 function bindButtons() {
@@ -2474,14 +2445,6 @@ function bindButtons() {
   if (settingsForm) {
     settingsForm.addEventListener('submit', saveSettings);
   }
-}
-
-function bindScraperHostCheckboxes() {
-  scraperHostCheckboxes.forEach((checkboxes, provider) => {
-    checkboxes.forEach((checkbox) => {
-      checkbox.addEventListener('change', () => updateScraperHostSelection(provider));
-    });
-  });
 }
 
 async function loadSettings() {
@@ -2544,67 +2507,6 @@ async function saveSettings(event) {
     }
   } catch (_) {
     // Fehler bereits behandelt
-  }
-}
-
-async function updateScraperHostSelection(provider) {
-  const checkboxes = scraperHostCheckboxes.get(provider) || [];
-  if (!checkboxes.length) {
-    return;
-  }
-
-  const previousState = checkboxes.map((checkbox) => ({
-    checkbox,
-    checked: checkbox.checked,
-  }));
-  const selectedHosts = checkboxes
-    .filter((checkbox) => checkbox.checked)
-    .map((checkbox) => checkbox.value)
-    .filter((value) => value);
-
-  const payload = {
-    scrapers: {
-      [provider]: {
-        stream_hosts: selectedHosts,
-      },
-    },
-  };
-
-  try {
-    checkboxes.forEach((checkbox) => {
-      checkbox.disabled = true;
-    });
-    const { success, settings } = await callApi('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!success) {
-      return;
-    }
-    currentSettings.scrapers = currentSettings.scrapers || {};
-    const providerSettings = settings?.scrapers?.[provider];
-    if (providerSettings) {
-      currentSettings.scrapers[provider] = {
-        ...(currentSettings.scrapers[provider] || {}),
-        ...providerSettings,
-      };
-    } else {
-      currentSettings.scrapers[provider] = {
-        ...(currentSettings.scrapers[provider] || {}),
-        stream_hosts: selectedHosts,
-      };
-    }
-    refreshScraperSettingsUi();
-    showToast('Anbieter-Auswahl gespeichert.', 'success');
-  } catch (error) {
-    previousState.forEach(({ checkbox, checked }) => {
-      checkbox.checked = checked;
-    });
-  } finally {
-    checkboxes.forEach((checkbox) => {
-      checkbox.disabled = false;
-    });
   }
 }
 
@@ -3943,7 +3845,6 @@ document.addEventListener('keydown', (event) => {
 
 initSearch();
 bindButtons();
-bindScraperHostCheckboxes();
 initNavigation();
 bindContentCards();
 initAllMoviesGenreFilter();

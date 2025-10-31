@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import requests
@@ -15,33 +15,6 @@ class _FilmpalastBase:
     """Shared functionality for Filmpalast scrapers."""
 
     label = "Filmpalast"
-
-    STREAM_HOST_OPTIONS: tuple[dict[str, object], ...] = (
-        {
-            "key": "veev-hd",
-            "label": "VEEV HD",
-            "description": "Bevorzugter 1080p Mirror über veev.to.",
-            "default": True,
-        },
-        {
-            "key": "veev",
-            "label": "VEEV (Standard)",
-            "description": "Weitere Mirrors über veev.to.",
-            "default": False,
-        },
-        {
-            "key": "voe",
-            "label": "VOE",
-            "description": "Streams über voe.sx.",
-            "default": False,
-        },
-        {
-            "key": "generic",
-            "label": "Weitere Hoster",
-            "description": "Alternative Mirrors wie savefiles.com oder strmup.to.",
-            "default": False,
-        },
-    )
 
     MOVIE_BASE_URL = "https://filmpalast.to/movies/new/page/{page}"
     SERIES_BASE_URL = "https://filmpalast.to/serien/view/page/{page}"
@@ -63,14 +36,6 @@ class _FilmpalastBase:
         ),
         "Referer": "https://filmpalast.to/",
     }
-
-    def __init__(self) -> None:
-        default_keys = {
-            option["key"]
-            for option in self.STREAM_HOST_OPTIONS
-            if option.get("default")
-        }
-        self._enabled_host_keys: set[str] = set(default_keys)
 
     # ------------------------------------------------------------------
     # Movie handling
@@ -276,10 +241,10 @@ class _FilmpalastBase:
             host_type = self._identify_host_type(streaming_url)
             if host_type is None:
                 continue
-            host_key = self._determine_stream_host_key(host_name, host_type)
-            if host_key is None:
+            if host_type != "veev":
                 continue
-            if host_key not in self._enabled_host_keys:
+
+            if host_name and "veev hd" not in host_name.lower():
                 continue
             if not self._is_stream_online(streaming_url, host_type):
                 continue
@@ -290,38 +255,9 @@ class _FilmpalastBase:
                     "mirror_info": host_name,
                     "host_name": host_name,
                     "host_type": host_type,
-                    "host_key": host_key,
                 }
             )
         return results
-
-    def get_stream_host_options(self) -> list[dict[str, object]]:
-        """Return available stream host options for configuration."""
-
-        return [dict(option) for option in self.STREAM_HOST_OPTIONS]
-
-    def get_default_stream_host_keys(self) -> tuple[str, ...]:
-        return tuple(
-            option["key"]
-            for option in self.STREAM_HOST_OPTIONS
-            if option.get("default")
-        )
-
-    def set_enabled_host_keys(self, keys: Iterable[str]) -> None:
-        allowed = {option["key"] for option in self.STREAM_HOST_OPTIONS}
-        provided = list(keys) if keys is not None else None
-        normalized = [
-            str(key).strip()
-            for key in (provided or [])
-            if isinstance(key, str) and str(key).strip() in allowed
-        ]
-        if normalized or (provided is not None and not provided):
-            self._enabled_host_keys = set(normalized)
-        else:
-            self._enabled_host_keys = set(self.get_default_stream_host_keys())
-
-    def get_enabled_host_keys(self) -> tuple[str, ...]:
-        return tuple(sorted(self._enabled_host_keys))
 
     def _normalize_streaming_url(self, streaming_url: str, base_url: str) -> str:
         if streaming_url.startswith("//"):
@@ -356,20 +292,6 @@ class _FilmpalastBase:
         if host_type == "veev":
             return self._is_veev_link_online(streaming_url)
         return True
-
-    def _determine_stream_host_key(
-        self, host_name: Optional[str], host_type: Optional[str]
-    ) -> Optional[str]:
-        normalized_name = host_name.lower() if host_name else ""
-        if host_type == "veev":
-            if "veev hd" in normalized_name:
-                return "veev-hd"
-            return "veev"
-        if host_type == "voe":
-            return "voe"
-        if host_type == "generic":
-            return "generic"
-        return None
 
     def _is_voe_link_online(self, streaming_url: str) -> bool:
         try:
