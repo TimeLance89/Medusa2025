@@ -2630,65 +2630,6 @@ body.showing-search {
     gap: 0.9rem;
 }
 
-.scraper-card__settings {
-    display: grid;
-    gap: 0.75rem;
-    padding: 1rem;
-    border-radius: 0.9rem;
-    border: 1px solid rgba(120, 144, 255, 0.18);
-    background: rgba(120, 144, 255, 0.06);
-}
-
-.scraper-card__settings-title {
-    margin: 0;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.scraper-card__options {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.65rem;
-}
-
-.scraper-card__option {
-    margin: 0;
-}
-
-.scraper-option {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: start;
-    gap: 0.65rem;
-    padding: 0.45rem 0.6rem;
-    border-radius: 0.75rem;
-    background: rgba(12, 20, 36, 0.45);
-    border: 1px solid rgba(120, 144, 255, 0.16);
-    transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.scraper-option:hover {
-    border-color: rgba(120, 144, 255, 0.35);
-    background: rgba(120, 144, 255, 0.12);
-}
-
-.scraper-option__checkbox {
-    margin-top: 0.15rem;
-}
-
-.scraper-option__label {
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.scraper-option__description {
-    grid-column: 2 / 3;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-}
-
 .scraper-status__message {
     margin: 0;
     color: var(--text-secondary);

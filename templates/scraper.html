@@ -2,7 +2,7 @@
 {% block title %}{{ page_title or 'Medusa – Scraper' }}{% endblock %}
 
 {% block main %}
-{% macro render_scraper_panel(provider, status, settings, panel_id, heading, mode, start_page=None, host_options=None) %}
+{% macro render_scraper_panel(provider, status, settings, panel_id, heading, mode, start_page=None) %}
     {% set progress_value = status.get('progress', 0.0) %}
     {% set status_next = status.get('next_page') or settings.get('next_page') %}
     {% set status_last = status.get('last_page') or (settings.get('last_page') if settings.get('last_page') else None) %}
@@ -103,35 +103,6 @@
                     <dd data-role="scraper-title">{{ status.get('last_title') or '–' }}</dd>
                 </div>
             </dl>
-            {% set selected_hosts = settings.get('stream_hosts') or [] %}
-            {% if host_options %}
-                <div class="scraper-card__settings" data-role="scraper-settings">
-                    <p class="scraper-card__settings-title">Stream-Anbieter</p>
-                    <ul class="scraper-card__options">
-                        {% for option in host_options %}
-                            {% set option_key = option.key %}
-                            {% set is_checked = (selected_hosts and option_key in selected_hosts) or (not selected_hosts and option.default) %}
-                            <li class="scraper-card__option">
-                                <label class="scraper-option">
-                                    <input
-                                        type="checkbox"
-                                        class="scraper-option__checkbox"
-                                        value="{{ option_key }}"
-                                        data-scraper-host-checkbox
-                                        data-provider="{{ provider.name }}"
-                                        data-default-enabled="{{ 'true' if option.default else 'false' }}"
-                                        {% if is_checked %}checked{% endif %}
-                                    >
-                                    <span class="scraper-option__label">{{ option.label }}</span>
-                                    {% if option.description %}
-                                        <span class="scraper-option__description">{{ option.description }}</span>
-                                    {% endif %}
-                                </label>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            {% endif %}
         </div>
 
         <footer class="scraper-card__footer">
@@ -230,7 +201,7 @@
             {% for provider in movie_scraper_providers %}
                 {% set status = scraper_statuses.get(provider.name, {}) %}
                 {% set settings = scraper_settings.get(provider.name, {}) %}
-                {{ render_scraper_panel(provider, status, settings, provider.name, 'Film-Scraper', 'movies', host_options=scraper_stream_host_options.get(provider.name)) }}
+                {{ render_scraper_panel(provider, status, settings, provider.name, 'Film-Scraper', 'movies') }}
             {% endfor %}
         {% else %}
             <p class="empty large">Keine Scraper-Anbieter verfügbar.</p>
