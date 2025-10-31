@@ -209,6 +209,32 @@
     </div>
 </section>
 
+<section class="surface stream-provider-cockpit" data-provider-cockpit>
+    <header class="stream-provider-cockpit__header">
+        <div>
+            <h2>Stream-Anbieter Cockpit</h2>
+            <p class="stream-provider-cockpit__description">
+                Verwalte alle gefundenen Hoster zentral: Links ausblenden, deaktivieren oder komplett löschen.
+            </p>
+        </div>
+        <div class="stream-provider-cockpit__actions">
+            <button type="button" class="chip" data-provider-action="refresh">
+                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                <span>Aktualisieren</span>
+            </button>
+            <button type="button" class="chip chip--danger" data-provider-action="delete-all">
+                <span class="material-symbols-outlined" aria-hidden="true">delete_forever</span>
+                <span>Alle Links löschen</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="stream-provider-cockpit__body" data-role="provider-body">
+        <p class="empty" data-role="provider-empty">Noch keine Anbieter geladen.</p>
+        <ul class="stream-provider-list" data-role="provider-list" hidden></ul>
+    </div>
+</section>
+
 <section class="surface scraper-results">
     <header class="scraper-results__header">
         <div>
